@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../providers/user_provider.dart';
 
 import 'history.dart';
 import 'profile_screen.dart';
@@ -15,6 +17,9 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final userProvider = Provider.of<UserProvider>(context);
+    final userName = userProvider.user?['username'] ?? "Guest";
+
     const Color bgColor = Color(0xFF061405);
     const Color cardColor = Color(0xFF132314);
     const Color accentGreen = Color(0xFF5ED5A8);
@@ -26,9 +31,7 @@ class HomeScreen extends StatelessWidget {
         children: [
           Positioned.fill(
             child: Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFFD4E7D4),
-              ),
+              decoration: const BoxDecoration(color: Color(0xFFD4E7D4)),
               child: Opacity(
                 opacity: 0.3,
                 child: GridPaper(
@@ -66,19 +69,25 @@ class HomeScreen extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Column(
+                        Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Good morning,",
-                                style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 18,
-                                    letterSpacing: 0.5)),
-                            Text("Kwame",
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w900)),
+                            const Text(
+                              "Good morning,",
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 18,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            Text(
+                              userName,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 32,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
                           ],
                         ),
                         GestureDetector(
@@ -86,7 +95,9 @@ class HomeScreen extends StatelessWidget {
                             HapticFeedback.lightImpact();
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => const NotificationPage()),
+                              MaterialPageRoute(
+                                builder: (context) => const NotificationPage(),
+                              ),
                             );
                           },
                           child: _buildNotificationBell(),
@@ -99,53 +110,114 @@ class HomeScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      const Text("Active Request",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600)),
+                      const Text(
+                        "Active Request",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const SizedBox(height: 16),
                       GestureDetector(
                         onTap: () {
                           HapticFeedback.mediumImpact();
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (context) => const TrackingPage()),
+                            MaterialPageRoute(
+                              builder: (context) => const TrackingPage(),
+                            ),
                           );
                         },
-                        child: _buildActiveRequestCard(cardColor, organicGreen, accentGreen),
+                        child: _buildActiveRequestCard(
+                          cardColor,
+                          organicGreen,
+                          accentGreen,
+                        ),
                       ),
                       const SizedBox(height: 32),
-                      const Text("Quick Actions",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600)),
+                      const Text(
+                        "Quick Actions",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const SizedBox(height: 16),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _buildActionBtn(context, "Request\nPickup", Icons.delete_outline, cardColor, const Color(0xFF4CAF50), const RequestPickupPage()),
-                          _buildActionBtn(context, "Schedule", Icons.calendar_month_outlined, cardColor, const Color(0xFF2196F3), const SchedulePickupPage()),
-                          _buildActionBtn(context, "Report\nDump", Icons.report_problem_outlined, cardColor, const Color(0xFFF44336), const ReportDumpPage()),
-                          _buildActionBtn(context, "History", Icons.history_outlined, cardColor, Colors.white70, const ServiceHistoryPage()),
+                          _buildActionBtn(
+                            context,
+                            "Request\nPickup",
+                            Icons.delete_outline,
+                            cardColor,
+                            const Color(0xFF4CAF50),
+                            const RequestPickupPage(),
+                          ),
+                          _buildActionBtn(
+                            context,
+                            "Schedule",
+                            Icons.calendar_month_outlined,
+                            cardColor,
+                            const Color(0xFF2196F3),
+                            const SchedulePickupPage(),
+                          ),
+                          _buildActionBtn(
+                            context,
+                            "Report\nDump",
+                            Icons.report_problem_outlined,
+                            cardColor,
+                            const Color(0xFFF44336),
+                            const ReportDumpPage(),
+                          ),
+                          _buildActionBtn(
+                            context,
+                            "History",
+                            Icons.history_outlined,
+                            cardColor,
+                            Colors.white70,
+                            const ServiceHistoryPage(),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 32),
-                      const Text("Waste Types",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600)),
+                      const Text(
+                        "Waste Types",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const SizedBox(height: 16),
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         physics: const BouncingScrollPhysics(),
                         child: Row(
                           children: [
-                            _buildWasteTypeCard("General", "GH₵ 20", Icons.delete_sweep, Colors.grey.shade400, cardColor),
-                            _buildWasteTypeCard("Recyclable", "GH₵ 20", Icons.recycling_rounded, Colors.lightBlueAccent, cardColor),
-                            _buildWasteTypeCard("Organic", "GH₵ 20", Icons.eco_rounded, organicGreen, cardColor),
+                            _buildWasteTypeCard(
+                              "General",
+                              "GH₵ 20",
+                              Icons.delete_sweep,
+                              Colors.grey.shade400,
+                              cardColor,
+                            ),
+                            _buildWasteTypeCard(
+                              "Recyclable",
+                              "GH₵ 20",
+                              Icons.recycling_rounded,
+                              Colors.lightBlueAccent,
+                              cardColor,
+                            ),
+                            _buildWasteTypeCard(
+                              "Organic",
+                              "GH₵ 20",
+                              Icons.eco_rounded,
+                              organicGreen,
+                              cardColor,
+                            ),
                           ],
                         ),
                       ),
@@ -172,10 +244,15 @@ class HomeScreen extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white.withOpacity(0.1))),
-              child: const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 28),
+                color: Colors.white.withOpacity(0.1),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
+              ),
+              child: const Icon(
+                Icons.notifications_none_rounded,
+                color: Colors.white,
+                size: 28,
+              ),
             ),
           ),
         ),
@@ -184,24 +261,43 @@ class HomeScreen extends StatelessWidget {
           top: 2,
           child: Container(
             padding: const EdgeInsets.all(4),
-            decoration: const BoxDecoration(color: Color(0xFFE57373), shape: BoxShape.circle),
+            decoration: const BoxDecoration(
+              color: Color(0xFFE57373),
+              shape: BoxShape.circle,
+            ),
             constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-            child: const Text("10",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+            child: const Text(
+              "10",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
-        )
+        ),
       ],
     );
   }
 
-  Widget _buildActiveRequestCard(Color cardBg, Color organic, Color trackColor) {
+  Widget _buildActiveRequestCard(
+    Color cardBg,
+    Color organic,
+    Color trackColor,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: Colors.white.withOpacity(0.08)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 10))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.4),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -215,41 +311,75 @@ class HomeScreen extends StatelessWidget {
                 children: [
                   Container(
                     padding: const EdgeInsets.all(10),
-                    decoration: const BoxDecoration(color: Color(0xFF5ED5A8), shape: BoxShape.circle),
-                    child: const Icon(Icons.near_me_rounded, color: Colors.black, size: 22),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF5ED5A8),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.near_me_rounded,
+                      color: Colors.black,
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(height: 6),
-                  const Text("Track", style: TextStyle(color: Color(0xFF5ED5A8), fontSize: 13, fontWeight: FontWeight.bold)),
+                  const Text(
+                    "Track",
+                    style: TextStyle(
+                      color: Color(0xFF5ED5A8),
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ],
-              )
+              ),
             ],
           ),
-          const Text("14 Ring Road East, Accra",
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text(
+            "14 Ring Road East, Accra",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 10),
           _buildStatusBadge("Pending", const Color(0xFFFFC107)),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.4),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withOpacity(0.05))),
+              color: Colors.black.withOpacity(0.4),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+            ),
             child: const Row(
               children: [
                 Icon(Icons.timer_outlined, color: Color(0xFF5ED5A8), size: 20),
                 SizedBox(width: 10),
-                Text("ETA: 10-15 min",
-                    style: TextStyle(color: Color(0xFF5ED5A8), fontSize: 15, fontWeight: FontWeight.w600)),
+                Text(
+                  "ETA: 10-15 min",
+                  style: TextStyle(
+                    color: Color(0xFF5ED5A8),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildActionBtn(BuildContext context, String label, IconData icon, Color bg, Color iconColor, Widget targetPage) {
+  Widget _buildActionBtn(
+    BuildContext context,
+    String label,
+    IconData icon,
+    Color bg,
+    Color iconColor,
+    Widget targetPage,
+  ) {
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
@@ -278,16 +408,29 @@ class HomeScreen extends StatelessWidget {
               child: Icon(icon, color: iconColor, size: 26),
             ),
             const SizedBox(height: 10),
-            Text(label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600, height: 1.2)),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildWasteTypeCard(String title, String price, IconData icon, Color accent, Color bg) {
+  Widget _buildWasteTypeCard(
+    String title,
+    String price,
+    IconData icon,
+    Color accent,
+    Color bg,
+  ) {
     return Container(
       margin: const EdgeInsets.only(right: 16),
       padding: const EdgeInsets.all(18),
@@ -302,7 +445,14 @@ class HomeScreen extends StatelessWidget {
         children: [
           _buildBadge(title, accent, icon),
           const SizedBox(height: 16),
-          Text(price, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+          Text(
+            price,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
       ),
     );
@@ -312,15 +462,23 @@ class HomeScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.4))),
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 14),
           const SizedBox(width: 6),
-          Text(text, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
         ],
       ),
     );
@@ -332,14 +490,26 @@ class HomeScreen extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: color.withOpacity(0.3))),
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
           child: Row(
             children: [
-              Container(height: 6, width: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              Container(
+                height: 6,
+                width: 6,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
               const SizedBox(width: 8),
-              Text(text, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+              Text(
+                text,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
         ),
@@ -352,25 +522,51 @@ class HomeScreen extends StatelessWidget {
       padding: const EdgeInsets.only(top: 10, bottom: 25),
       decoration: BoxDecoration(
         color: bg,
-        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05), width: 1)),
+        border: Border(
+          top: BorderSide(color: Colors.white.withOpacity(0.05), width: 1),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _navItem(context, Icons.home_filled, "Home", true, activeColor, null),
-          _navItem(context, Icons.history_rounded, "History", false, activeColor, const ServiceHistoryPage()),
-          _navItem(context, Icons.person_2_outlined, "Profile", false, activeColor, const ProfilePage()),
+          _navItem(
+            context,
+            Icons.history_rounded,
+            "History",
+            false,
+            activeColor,
+            const ServiceHistoryPage(),
+          ),
+          _navItem(
+            context,
+            Icons.person_2_outlined,
+            "Profile",
+            false,
+            activeColor,
+            const ProfilePage(),
+          ),
         ],
       ),
     );
   }
 
-  Widget _navItem(BuildContext context, IconData icon, String label, bool isActive, Color activeColor, Widget? target) {
+  Widget _navItem(
+    BuildContext context,
+    IconData icon,
+    String label,
+    bool isActive,
+    Color activeColor,
+    Widget? target,
+  ) {
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
         if (!isActive && target != null) {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => target));
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => target),
+          );
         }
       },
       child: Column(
@@ -378,11 +574,14 @@ class HomeScreen extends StatelessWidget {
         children: [
           Icon(icon, color: isActive ? activeColor : Colors.white38, size: 28),
           const SizedBox(height: 4),
-          Text(label,
-              style: TextStyle(
-                  color: isActive ? activeColor : Colors.white38,
-                  fontSize: 12,
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+          Text(
+            label,
+            style: TextStyle(
+              color: isActive ? activeColor : Colors.white38,
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
         ],
       ),
     );

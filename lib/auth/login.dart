@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:provider/provider.dart';
+import '../providers/user_provider.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -46,14 +50,14 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ),
-          
+
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
                 children: [
                   const SizedBox(height: 40),
-                  
+
                   // Header & Logo Section
                   Center(
                     child: Column(
@@ -64,7 +68,11 @@ class _LoginPageState extends State<LoginPage> {
                             color: primaryColor,
                             borderRadius: BorderRadius.circular(16),
                           ),
-                          child: const Icon(Icons.delete_outline, color: Colors.white, size: 32),
+                          child: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.white,
+                            size: 32,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Text(
@@ -83,7 +91,7 @@ class _LoginPageState extends State<LoginPage> {
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 40),
 
                   // The Professional Login Card
@@ -98,7 +106,7 @@ class _LoginPageState extends State<LoginPage> {
                           color: Colors.black.withOpacity(0.03),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
-                        )
+                        ),
                       ],
                     ),
                     child: Column(
@@ -106,7 +114,10 @@ class _LoginPageState extends State<LoginPage> {
                       children: [
                         const Text(
                           "Welcome back",
-                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const Text(
                           "Sign in to your account",
@@ -122,9 +133,9 @@ class _LoginPageState extends State<LoginPage> {
                           icon: Icons.phone_outlined,
                           type: TextInputType.phone,
                         ),
-                        
+
                         const SizedBox(height: 20),
-                        
+
                         _buildLabel("Password"),
                         _buildTextField(
                           controller: _passwordController,
@@ -141,7 +152,10 @@ class _LoginPageState extends State<LoginPage> {
                             },
                             child: Text(
                               "Forgot password?",
-                              style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                color: primaryColor,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
@@ -156,22 +170,32 @@ class _LoginPageState extends State<LoginPage> {
                             onPressed: _isLoading ? null : _handleLogin,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: primaryColor,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               elevation: 0,
                             ),
-                            child: _isLoading 
-                              ? const SizedBox(
-                                  height: 24,
-                                  width: 24,
-                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                )
-                              : const Text(
-                                  "Sign In",
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                                ),
+                            child:
+                                _isLoading
+                                    ? const SizedBox(
+                                      height: 24,
+                                      width: 24,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                    : const Text(
+                                      "Sign In",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: 24),
 
                         // Standard Sign Up
@@ -180,10 +204,15 @@ class _LoginPageState extends State<LoginPage> {
                           children: [
                             const Text("Don't have an account? "),
                             GestureDetector(
-                              onTap: () => Navigator.pushNamed(context, '/register'),
+                              onTap:
+                                  () =>
+                                      Navigator.pushNamed(context, '/register'),
                               child: Text(
                                 "Sign up",
-                                style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                  color: primaryColor,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ],
@@ -191,7 +220,7 @@ class _LoginPageState extends State<LoginPage> {
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 40),
 
                   // Collector Registration Section
@@ -252,7 +281,10 @@ class _LoginPageState extends State<LoginPage> {
   Widget _buildLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      child: Text(
+        text,
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      ),
     );
   }
 
@@ -270,12 +302,21 @@ class _LoginPageState extends State<LoginPage> {
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(icon, size: 20, color: Colors.grey),
-        suffixIcon: isPassword
-            ? IconButton(
-                icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off, size: 20),
-                onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
-              )
-            : null,
+        suffixIcon:
+            isPassword
+                ? IconButton(
+                  icon: Icon(
+                    _isPasswordVisible
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                    size: 20,
+                  ),
+                  onPressed:
+                      () => setState(
+                        () => _isPasswordVisible = !_isPasswordVisible,
+                      ),
+                )
+                : null,
         filled: true,
         fillColor: Colors.grey[100],
         border: OutlineInputBorder(
@@ -290,7 +331,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  void _handleLogin() {
+  Future<void> _handleLogin() async {
     // Basic validation check
     if (_phoneController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -301,13 +342,41 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() => _isLoading = true);
 
-    // Simulate network request
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        // Navigate to Home and remove the login screen from the stack
-        Navigator.pushReplacementNamed(context, '/home');
+    try {
+      final response = await http.post(
+        Uri.parse("http://127.0.0.1:8000/api/v1/accounts/auth/login/"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "phone_number": _phoneController.text,
+          "password": _passwordController.text,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+
+        // Save response data to State Management
+        Provider.of<UserProvider>(context, listen: false).setUser(responseData);
+
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      } else {
+        final errorData = jsonDecode(response.body);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Login Failed: ${errorData['message'] ?? 'Invalid credentials'}",
+            ),
+          ),
+        );
       }
-    });
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("An error occurred: $e")));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 }

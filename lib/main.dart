@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'auth/login.dart';
 import 'auth/register.dart';
 import 'home/home_screen.dart';
 import 'home/schedule_pickup.dart';
 import 'home/tracking_page.dart'; // Create this file in lib/tracking/
+import 'providers/user_provider.dart';
 
 void main() {
-  runApp(const WasteApp());
+  runApp(
+    MultiProvider(
+      providers: [ChangeNotifierProvider(create: (_) => UserProvider())],
+      child: const WasteApp(),
+    ),
+  );
 }
 
 class WasteApp extends StatelessWidget {

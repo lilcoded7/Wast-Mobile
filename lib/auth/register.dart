@@ -1,4 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:io';
+import 'package:provider/provider.dart';
+import 'package:wastmobile/providers/user_provider.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -8,13 +15,11 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  // Controllers
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  // State
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
@@ -26,7 +31,6 @@ class _RegisterPageState extends State<RegisterPage> {
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // 1. Professional Background Gradient
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -41,11 +45,9 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
             ),
           ),
-          
           SafeArea(
             child: Column(
               children: [
-                // Custom Back Button
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Padding(
@@ -56,7 +58,6 @@ class _RegisterPageState extends State<RegisterPage> {
                     ),
                   ),
                 ),
-                
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -64,8 +65,6 @@ class _RegisterPageState extends State<RegisterPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 16),
-                        
-                        // Header Text
                         Text(
                           "Create account",
                           style: TextStyle(
@@ -80,10 +79,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           "Join WastePick to request pickups",
                           style: TextStyle(color: Colors.grey, fontSize: 14),
                         ),
-                        
                         const SizedBox(height: 32),
-
-                        // 2. Form Card
                         Container(
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
@@ -95,7 +91,7 @@ class _RegisterPageState extends State<RegisterPage> {
                                 color: Colors.black.withOpacity(0.03),
                                 blurRadius: 20,
                                 offset: const Offset(0, 10),
-                              )
+                              ),
                             ],
                           ),
                           child: Column(
@@ -131,10 +127,7 @@ class _RegisterPageState extends State<RegisterPage> {
                                 icon: Icons.lock_outline,
                                 isPassword: true,
                               ),
-                              
                               const SizedBox(height: 24),
-
-                              // 3. Create Account Button
                               SizedBox(
                                 width: double.infinity,
                                 height: 56,
@@ -147,30 +140,33 @@ class _RegisterPageState extends State<RegisterPage> {
                                     ),
                                     elevation: 0,
                                   ),
-                                  child: _isLoading 
-                                    ? const SizedBox(
-                                        height: 24, 
-                                        width: 24, 
-                                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                      )
-                                    : const Text(
-                                        "Create Account",
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          height: 24,
+                                          width: 24,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Text(
+                                          "Create Account",
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
                                         ),
-                                      ),
                                 ),
                               ),
-                              
                               const SizedBox(height: 24),
-
-                              // 4. Footer
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Text("Already have an account? ", style: TextStyle(color: Colors.grey)),
+                                  const Text(
+                                    "Already have an account? ",
+                                    style: TextStyle(color: Colors.grey),
+                                  ),
                                   GestureDetector(
                                     onTap: () => Navigator.pop(context),
                                     child: Text(
@@ -198,8 +194,6 @@ class _RegisterPageState extends State<RegisterPage> {
       ),
     );
   }
-
-  // --- Helper Widgets ---
 
   Widget _buildField({
     required String label,
@@ -250,17 +244,61 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  void _handleRegister() {
+  Future<void> _handleRegister() async {
+    if (_usernameController.text.isEmpty || _phoneController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fill all fields")));
+      return;
+    }
+
     setState(() => _isLoading = true);
-    
-    // Simulate API Payload Execution
-    // Payload: { "username": _usernameController.text, "email": _emailController.text, "phone_number": _phoneController.text, "password": _passwordController.text }
-    
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        Navigator.pushReplacementNamed(context, '/home');
+
+    try {
+      LocationPermission permission = await Geolocator.requestPermission();
+      Position position = await Geolocator.getCurrentPosition();
+
+      String deviceId = "unknown";
+      DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+        deviceId = androidInfo.id;
+      } else if (Platform.isIOS) {
+        IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+        deviceId = iosInfo.identifierForVendor ?? "unknown";
       }
-    });
+
+      final body = {
+        "phone_number": _phoneController.text,
+        "username": _usernameController.text,
+        "email": _emailController.text,
+        "password": _passwordController.text,
+        "device_id": deviceId,
+        "latitude": position.latitude,
+        "longitude": position.longitude,
+      };
+
+      final response = await http.post(
+        Uri.parse("http://127.0.0.1:8000/api/v1/accounts/auth/register/"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        Provider.of<UserProvider>(context, listen: false).setUser(responseData);
+
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      } else {
+        final errorData = jsonDecode(response.body);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: ${errorData.toString()}")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed: $e")));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 }

@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:wastmobile/providers/user_provider.dart';
+import '../auth/login.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final userProvider = Provider.of<UserProvider>(context);
+    final user = userProvider.user;
+
     const Color bgColor = Color(0xFF061405);
     const Color cardColor = Color(0xFF132314);
     const Color accentGreen = Color(0xFF5ED5A8);
@@ -38,9 +44,9 @@ class ProfilePage extends StatelessWidget {
                     const SizedBox(height: 40),
                     _buildProfileImage(bgColor, headerGreen),
                     const SizedBox(height: 16),
-                    const Text(
-                      "Kwame Asante",
-                      style: TextStyle(
+                    Text(
+                      user?['username'] ?? "User",
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
@@ -48,7 +54,7 @@ class ProfilePage extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      "lilcoded7@gmail.com • +233 24 000 0000",
+                      "${user?['email'] ?? ''} • ${user?['phone_number'] ?? ''}",
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.8),
                         fontSize: 13,
@@ -152,7 +158,7 @@ class ProfilePage extends StatelessWidget {
                   const SizedBox(height: 50),
 
                   // LOGOUT AT THE VERY BOTTOM
-                  _buildLogoutButton(),
+                  _buildLogoutButton(context),
                 ],
               ),
             ),
@@ -288,11 +294,19 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _buildLogoutButton() {
+  Widget _buildLogoutButton(BuildContext context) {
     return Center(
       child: InkWell(
         onTap: () {
           HapticFeedback.heavyImpact();
+          // Navigates to Login and removes all previous screens from the stack
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const LoginPage(),
+            ), // Ensure you import your LoginPage file
+            (route) => false,
+          );
         },
         borderRadius: BorderRadius.circular(20),
         child: Container(
