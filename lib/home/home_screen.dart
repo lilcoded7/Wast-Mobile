@@ -2,28 +2,32 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'history.dart';
+import 'profile_screen.dart';
+import 'request.dart';
+import 'schedule_pickup.dart';
+import 'report_dumping.dart';
+import 'tracking_page.dart';
+import 'notification.dart';
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Exact color palette from the reference
-    const Color bgColor = Color(0xFF061405); // Deep dark green/black
-    const Color cardColor = Color(0xFF132314); // Dark forest card
-    const Color accentGreen = Color(0xFF5ED5A8); // Track button green
-    const Color organicGreen = Color(0xFF8BCA3E); // Badge green
-    const Color glassBorder = Color(0xFF2D3C2D); // Subtle border
+    const Color bgColor = Color(0xFF061405);
+    const Color cardColor = Color(0xFF132314);
+    const Color accentGreen = Color(0xFF5ED5A8);
+    const Color organicGreen = Color(0xFF8BCA3E);
 
     return Scaffold(
       backgroundColor: bgColor,
       body: Stack(
         children: [
-          // 1. DYNAMIC MAP BACKGROUND
-          // In a real app, replace this Container with GoogleMap()
           Positioned.fill(
             child: Container(
               decoration: const BoxDecoration(
-                color: Color(0xFFD4E7D4), // Light map base
+                color: Color(0xFFD4E7D4),
               ),
               child: Opacity(
                 opacity: 0.3,
@@ -36,8 +40,6 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
           ),
-          
-          // MAP OVERLAY GRADIENT (Creates the "fade" into the dark UI)
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
@@ -54,41 +56,45 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
           ),
-
-          // 2. SCROLLABLE CONTENT
           SafeArea(
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                // POLISHED TOP BAR
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
                   sliver: SliverToBoxAdapter(
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Column(
+                        const Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text("Good morning,",
                                 style: TextStyle(
-                                    color: Colors.white.withOpacity(0.9),
+                                    color: Colors.white70,
                                     fontSize: 18,
                                     letterSpacing: 0.5)),
-                            const Text("Kwame",
+                            Text("Kwame",
                                 style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 32,
                                     fontWeight: FontWeight.w900)),
                           ],
                         ),
-                        _buildNotificationBell(),
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const NotificationPage()),
+                            );
+                          },
+                          child: _buildNotificationBell(),
+                        ),
                       ],
                     ),
                   ),
                 ),
-
-                // CONTENT SECTION
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   sliver: SliverList(
@@ -99,10 +105,16 @@ class HomeScreen extends StatelessWidget {
                               fontSize: 18,
                               fontWeight: FontWeight.w600)),
                       const SizedBox(height: 16),
-                      
-                      // POLISHED ACTIVE REQUEST CARD
-                      _buildActiveRequestCard(cardColor, organicGreen, accentGreen),
-
+                      GestureDetector(
+                        onTap: () {
+                          HapticFeedback.mediumImpact();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const TrackingPage()),
+                          );
+                        },
+                        child: _buildActiveRequestCard(cardColor, organicGreen, accentGreen),
+                      ),
                       const SizedBox(height: 32),
                       const Text("Quick Actions",
                           style: TextStyle(
@@ -110,18 +122,15 @@ class HomeScreen extends StatelessWidget {
                               fontSize: 18,
                               fontWeight: FontWeight.w600)),
                       const SizedBox(height: 16),
-                      
-                      // POLISHED QUICK ACTIONS GRID
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _buildActionBtn("Request\nPickup", Icons.delete_outline, cardColor, const Color(0xFF4CAF50)),
-                          _buildActionBtn("Schedule", Icons.calendar_month_outlined, cardColor, const Color(0xFF2196F3)),
-                          _buildActionBtn("Report\nDump", Icons.report_problem_outlined, cardColor, const Color(0xFFF44336)),
-                          _buildActionBtn("History", Icons.history_outlined, cardColor, Colors.white70),
+                          _buildActionBtn(context, "Request\nPickup", Icons.delete_outline, cardColor, const Color(0xFF4CAF50), const RequestPickupPage()),
+                          _buildActionBtn(context, "Schedule", Icons.calendar_month_outlined, cardColor, const Color(0xFF2196F3), const SchedulePickupPage()),
+                          _buildActionBtn(context, "Report\nDump", Icons.report_problem_outlined, cardColor, const Color(0xFFF44336), const ReportDumpPage()),
+                          _buildActionBtn(context, "History", Icons.history_outlined, cardColor, Colors.white70, const ServiceHistoryPage()),
                         ],
                       ),
-
                       const SizedBox(height: 32),
                       const Text("Waste Types",
                           style: TextStyle(
@@ -129,8 +138,6 @@ class HomeScreen extends StatelessWidget {
                               fontSize: 18,
                               fontWeight: FontWeight.w600)),
                       const SizedBox(height: 16),
-                      
-                      // HORIZONTAL WASTE TYPES
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         physics: const BouncingScrollPhysics(),
@@ -151,11 +158,9 @@ class HomeScreen extends StatelessWidget {
           ),
         ],
       ),
-      bottomNavigationBar: _buildBottomNav(bgColor, accentGreen),
+      bottomNavigationBar: _buildBottomNav(context, bgColor, accentGreen),
     );
   }
-
-  // --- POLISHED UI COMPONENTS ---
 
   Widget _buildNotificationBell() {
     return Stack(
@@ -230,11 +235,11 @@ class HomeScreen extends StatelessWidget {
                 color: Colors.black.withOpacity(0.4),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: Colors.white.withOpacity(0.05))),
-            child: Row(
+            child: const Row(
               children: [
-                const Icon(Icons.timer_outlined, color: Color(0xFF5ED5A8), size: 20),
-                const SizedBox(width: 10),
-                const Text("ETA: 10-15 min",
+                Icon(Icons.timer_outlined, color: Color(0xFF5ED5A8), size: 20),
+                SizedBox(width: 10),
+                Text("ETA: 10-15 min",
                     style: TextStyle(color: Color(0xFF5ED5A8), fontSize: 15, fontWeight: FontWeight.w600)),
               ],
             ),
@@ -244,31 +249,40 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActionBtn(String label, IconData icon, Color bg, Color iconColor) {
-    return Container(
-      width: 82,
-      height: 105,
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(14),
+  Widget _buildActionBtn(BuildContext context, String label, IconData icon, Color bg, Color iconColor, Widget targetPage) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => targetPage),
+        );
+      },
+      child: Container(
+        width: 82,
+        height: 105,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: iconColor, size: 26),
             ),
-            child: Icon(icon, color: iconColor, size: 26),
-          ),
-          const SizedBox(height: 10),
-          Text(label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600, height: 1.2)),
-        ],
+            const SizedBox(height: 10),
+            Text(label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600, height: 1.2)),
+          ],
+        ),
       ),
     );
   }
@@ -333,7 +347,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomNav(Color bg, Color active) {
+  Widget _buildBottomNav(BuildContext context, Color bg, Color activeColor) {
     return Container(
       padding: const EdgeInsets.only(top: 10, bottom: 25),
       decoration: BoxDecoration(
@@ -343,22 +357,34 @@ class HomeScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _navItem(Icons.home_filled, "Home", true, active),
-          _navItem(Icons.history_rounded, "History", false, active),
-          _navItem(Icons.person_2_outlined, "Profile", false, active),
+          _navItem(context, Icons.home_filled, "Home", true, activeColor, null),
+          _navItem(context, Icons.history_rounded, "History", false, activeColor, const ServiceHistoryPage()),
+          _navItem(context, Icons.person_2_outlined, "Profile", false, activeColor, const ProfilePage()),
         ],
       ),
     );
   }
 
-  Widget _navItem(IconData icon, String label, bool isActive, Color activeColor) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: isActive ? activeColor : Colors.white38, size: 28),
-        const SizedBox(height: 4),
-        Text(label, style: TextStyle(color: isActive ? activeColor : Colors.white38, fontSize: 12, fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
-      ],
+  Widget _navItem(BuildContext context, IconData icon, String label, bool isActive, Color activeColor, Widget? target) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        if (!isActive && target != null) {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => target));
+        }
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: isActive ? activeColor : Colors.white38, size: 28),
+          const SizedBox(height: 4),
+          Text(label,
+              style: TextStyle(
+                  color: isActive ? activeColor : Colors.white38,
+                  fontSize: 12,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+        ],
+      ),
     );
   }
 }
