@@ -9,7 +9,13 @@ class ServiceHistoryPage extends StatefulWidget {
 
 class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
   String selectedFilter = "All";
-  final List<String> filters = ["All", "Completed", "Active", "Scheduled", "Cancelled"];
+  final List<String> filters = [
+    "All",
+    "Completed",
+    "Active",
+    "Scheduled",
+    "Cancelled",
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +35,13 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    alignment: Alignment.centerLeft,
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  const SizedBox(height: 10),
                   const Text(
                     "Service History",
                     style: TextStyle(
@@ -56,7 +69,10 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               physics: const BouncingScrollPhysics(),
               child: Row(
-                children: filters.map((filter) => _buildFilterChip(filter, accentGreen)).toList(),
+                children:
+                    filters
+                        .map((filter) => _buildFilterChip(filter, accentGreen))
+                        .toList(),
               ),
             ),
 
@@ -67,11 +83,51 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 physics: const BouncingScrollPhysics(),
                 children: [
-                  _historyItem("Organic", "14 Ring Road East, Accra", "10 Apr 2026", "GH₵ 20", "Pending", Colors.amber, cardColor),
-                  _historyItem("General", "Dansoman, Accra", "10 Apr 2026", "GH₵ 20", "Pending", Colors.amber, cardColor),
-                  _historyItem("Recyclable", "Tema Community 1, Accra", "10 Apr 2026", "GH₵ 20", "Arrived", accentGreen, cardColor),
-                  _historyItem("General", "12 Cantonments Road, Accra", "10 Apr 2026", "GH₵ 20", "Completed", Colors.green, cardColor),
-                  _historyItem("Recyclable", "12 Cantonments Road, Accra", "9 Apr 2026", "GH₵ 20", "Completed", Colors.green, cardColor),
+                  _historyItem(
+                    "Organic",
+                    "14 Ring Road East, Accra",
+                    "10 Apr 2026",
+                    "GH₵ 20",
+                    "Pending",
+                    Colors.amber,
+                    cardColor,
+                  ),
+                  _historyItem(
+                    "General",
+                    "Dansoman, Accra",
+                    "10 Apr 2026",
+                    "GH₵ 20",
+                    "Pending",
+                    Colors.amber,
+                    cardColor,
+                  ),
+                  _historyItem(
+                    "Recyclable",
+                    "Tema Community 1, Accra",
+                    "10 Apr 2026",
+                    "GH₵ 20",
+                    "Arrived",
+                    accentGreen,
+                    cardColor,
+                  ),
+                  _historyItem(
+                    "General",
+                    "12 Cantonments Road, Accra",
+                    "10 Apr 2026",
+                    "GH₵ 20",
+                    "Completed",
+                    Colors.green,
+                    cardColor,
+                  ),
+                  _historyItem(
+                    "Recyclable",
+                    "12 Cantonments Road, Accra",
+                    "9 Apr 2026",
+                    "GH₵ 20",
+                    "Completed",
+                    Colors.green,
+                    cardColor,
+                  ),
                   const SizedBox(height: 100),
                 ],
               ),
@@ -108,7 +164,15 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
     );
   }
 
-  Widget _historyItem(String type, String address, String date, String price, String status, Color statusColor, Color bg) {
+  Widget _historyItem(
+    String type,
+    String address,
+    String date,
+    String price,
+    String status,
+    Color statusColor,
+    Color bg,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
@@ -122,10 +186,7 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _typeBadge(type),
-              _statusBadge(status, statusColor),
-            ],
+            children: [_typeBadge(type), _statusBadge(status, statusColor)],
           ),
           const SizedBox(height: 12),
           Text(
@@ -142,7 +203,10 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
             children: [
               Text(
                 date,
-                style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14),
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.4),
+                  fontSize: 14,
+                ),
               ),
               Text(
                 price,
@@ -157,8 +221,11 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerRight,
-            child: Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.3)),
-          )
+            child: Icon(
+              Icons.chevron_right,
+              color: Colors.white.withOpacity(0.3),
+            ),
+          ),
         ],
       ),
     );
@@ -192,7 +259,11 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
           const SizedBox(width: 6),
           Text(
             type,
-            style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),

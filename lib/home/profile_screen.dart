@@ -20,12 +20,17 @@ class ProfilePage extends StatelessWidget {
           SliverAppBar(
             expandedHeight: 280,
             backgroundColor: bgColor,
-            automaticallyImplyLeading: false,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
+            ),
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: const BoxDecoration(
                   color: headerGreen,
-                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(45)),
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(45),
+                  ),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -66,7 +71,11 @@ class ProfilePage extends StatelessWidget {
                       color: Colors.white.withOpacity(0.2),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.edit_outlined, color: Colors.white, size: 20),
+                    child: const Icon(
+                      Icons.edit_outlined,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                   ),
                 ),
               ),
@@ -76,34 +85,72 @@ class ProfilePage extends StatelessWidget {
           // 2. SCROLLABLE CONTENT
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 30, 20, 100), // Large bottom padding
+              padding: const EdgeInsets.fromLTRB(
+                20,
+                30,
+                20,
+                100,
+              ), // Large bottom padding
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSectionLabel("ACCOUNT"),
                   _buildGroupedCard(cardColor, [
-                    _buildTile(Icons.map_outlined, "Saved Addresses", accentGreen, trailing: _buildBadge("2")),
-                    _buildTile(Icons.wallet_outlined, "Payment Methods", accentGreen),
-                    _buildTile(Icons.notifications_none_rounded, "Notifications", accentGreen),
+                    _buildTile(
+                      Icons.map_outlined,
+                      "Saved Addresses",
+                      accentGreen,
+                      trailing: _buildBadge("2"),
+                    ),
+                    _buildTile(
+                      Icons.wallet_outlined,
+                      "Payment Methods",
+                      accentGreen,
+                    ),
+                    _buildTile(
+                      Icons.notifications_none_rounded,
+                      "Notifications",
+                      accentGreen,
+                    ),
                   ]),
 
                   const SizedBox(height: 30),
                   _buildSectionLabel("ACTIVITY"),
                   _buildGroupedCard(cardColor, [
-                    _buildTile(Icons.receipt_long_outlined, "Service History", accentGreen),
-                    _buildTile(Icons.campaign_outlined, "Dumping Reports", accentGreen),
+                    _buildTile(
+                      Icons.receipt_long_outlined,
+                      "Service History",
+                      accentGreen,
+                    ),
+                    _buildTile(
+                      Icons.campaign_outlined,
+                      "Dumping Reports",
+                      accentGreen,
+                    ),
                   ]),
 
                   const SizedBox(height: 30),
                   _buildSectionLabel("SUPPORT"),
                   _buildGroupedCard(cardColor, [
-                    _buildTile(Icons.help_center_outlined, "Help & Support", accentGreen),
-                    _buildTile(Icons.star_border_rounded, "Rate the App", accentGreen),
-                    _buildTile(Icons.info_outline_rounded, "About", accentGreen),
+                    _buildTile(
+                      Icons.help_center_outlined,
+                      "Help & Support",
+                      accentGreen,
+                    ),
+                    _buildTile(
+                      Icons.star_border_rounded,
+                      "Rate the App",
+                      accentGreen,
+                    ),
+                    _buildTile(
+                      Icons.info_outline_rounded,
+                      "About",
+                      accentGreen,
+                    ),
                   ]),
 
                   const SizedBox(height: 50),
-                  
+
                   // LOGOUT AT THE VERY BOTTOM
                   _buildLogoutButton(),
                 ],
@@ -132,7 +179,11 @@ class ProfilePage extends StatelessWidget {
             backgroundColor: Colors.white,
             child: Text(
               "K",
-              style: TextStyle(color: Color(0xFF4CAF50), fontSize: 45, fontWeight: FontWeight.w900),
+              style: TextStyle(
+                color: Color(0xFF4CAF50),
+                fontSize: 45,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ),
@@ -145,7 +196,11 @@ class ProfilePage extends StatelessWidget {
               shape: BoxShape.circle,
               border: Border.all(color: header, width: 3),
             ),
-            child: const Icon(Icons.photo_camera, color: Colors.white, size: 18),
+            child: const Icon(
+              Icons.photo_camera,
+              color: Colors.white,
+              size: 18,
+            ),
           ),
         ),
       ],
@@ -157,7 +212,12 @@ class ProfilePage extends StatelessWidget {
       padding: const EdgeInsets.only(left: 8, bottom: 12),
       child: Text(
         text,
-        style: const TextStyle(color: Colors.white30, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.5),
+        style: const TextStyle(
+          color: Colors.white30,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 1.5,
+        ),
       ),
     );
   }
@@ -173,7 +233,12 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _buildTile(IconData icon, String title, Color accent, {Widget? trailing}) {
+  Widget _buildTile(
+    IconData icon,
+    String title,
+    Color accent, {
+    Widget? trailing,
+  }) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       leading: Container(
@@ -186,9 +251,19 @@ class ProfilePage extends StatelessWidget {
       ),
       title: Text(
         title,
-        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
       ),
-      trailing: trailing ?? const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white12, size: 16),
+      trailing:
+          trailing ??
+          const Icon(
+            Icons.arrow_forward_ios_rounded,
+            color: Colors.white12,
+            size: 16,
+          ),
       onTap: () {
         HapticFeedback.selectionClick();
       },
@@ -204,7 +279,11 @@ class ProfilePage extends StatelessWidget {
       ),
       child: Text(
         count,
-        style: const TextStyle(color: Color(0xFF5ED5A8), fontSize: 12, fontWeight: FontWeight.bold),
+        style: const TextStyle(
+          color: Color(0xFF5ED5A8),
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }
@@ -230,7 +309,11 @@ class ProfilePage extends StatelessWidget {
               SizedBox(width: 12),
               Text(
                 "Sign Out",
-                style: TextStyle(color: Colors.redAccent, fontSize: 16, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ],
           ),
