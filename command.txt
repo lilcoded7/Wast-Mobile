@@ -1,0 +1,6 @@
+xcrun simctl boot 7D1E5BDE-0A41-4F2E-988A-F32FBC93A4AF
+open -a Simulator
+
+
+xcrun simctl list devices
+xcrun simctl boot "iPhone 15"
