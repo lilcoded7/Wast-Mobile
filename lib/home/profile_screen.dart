@@ -2,7 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:wastmobile/providers/user_provider.dart';
+
+// Feature Imports - Mapped to your actual folder structure
 import '../auth/login.dart';
+import 'history.dart';
+import 'notification.dart'; // Fixed: was notifications.dart
+import 'saved_address.dart'; // Fixed: was saved_addresses.dart
+import 'reports.dart'; // Fixed: contains DumpingReportsPage
+import 'payment.dart'; // Fixed: was payment_methods.dart
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -10,7 +17,7 @@ class ProfilePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final userProvider = Provider.of<UserProvider>(context);
-    final user = userProvider.user;
+    final user = userProvider.authData?['user'];
 
     const Color bgColor = Color(0xFF061405);
     const Color cardColor = Color(0xFF132314);
@@ -22,10 +29,10 @@ class ProfilePage extends StatelessWidget {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // 1. STICKY/FLEXIBLE HEADER
           SliverAppBar(
             expandedHeight: 280,
             backgroundColor: bgColor,
+            automaticallyImplyLeading: false,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
               onPressed: () => Navigator.pop(context),
@@ -65,99 +72,77 @@ class ProfilePage extends StatelessWidget {
                 ),
               ),
             ),
-            // Floating Edit Button
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 16, top: 10),
-                child: IconButton(
-                  onPressed: () => HapticFeedback.lightImpact(),
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.edit_outlined,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
-
-          // 2. SCROLLABLE CONTENT
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                20,
-                30,
-                20,
-                100,
-              ), // Large bottom padding
+              padding: const EdgeInsets.fromLTRB(20, 30, 20, 100),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSectionLabel("ACCOUNT"),
                   _buildGroupedCard(cardColor, [
                     _buildTile(
+                      context,
                       Icons.map_outlined,
                       "Saved Addresses",
                       accentGreen,
-                      trailing: _buildBadge("2"),
+                      // Pointing to the class in saved_address.dart
+                      destination: const SavedAddressesPage(),
                     ),
                     _buildTile(
+                      context,
                       Icons.wallet_outlined,
                       "Payment Methods",
                       accentGreen,
+                      // Pointing to the class in payment.dart
+                      destination: const PaymentMethodsPage(),
                     ),
                     _buildTile(
+                      context,
                       Icons.notifications_none_rounded,
                       "Notifications",
                       accentGreen,
+                      // Pointing to the class in notification.dart
+                      destination: const NotificationPage(),
                     ),
                   ]),
-
                   const SizedBox(height: 30),
                   _buildSectionLabel("ACTIVITY"),
                   _buildGroupedCard(cardColor, [
                     _buildTile(
+                      context,
                       Icons.receipt_long_outlined,
                       "Service History",
                       accentGreen,
+                      // Pointing to history.dart
+                      destination: const ServiceHistoryPage(),
                     ),
                     _buildTile(
+                      context,
                       Icons.campaign_outlined,
                       "Dumping Reports",
                       accentGreen,
+                      // Pointing to report_dumping.dart
+                      destination: const DumpingReportsPage(),
                     ),
                   ]),
-
                   const SizedBox(height: 30),
                   _buildSectionLabel("SUPPORT"),
                   _buildGroupedCard(cardColor, [
                     _buildTile(
+                      context,
                       Icons.help_center_outlined,
                       "Help & Support",
                       accentGreen,
                     ),
                     _buildTile(
-                      Icons.star_border_rounded,
-                      "Rate the App",
-                      accentGreen,
-                    ),
-                    _buildTile(
+                      context,
                       Icons.info_outline_rounded,
                       "About",
                       accentGreen,
                     ),
                   ]),
-
                   const SizedBox(height: 50),
-
-                  // LOGOUT AT THE VERY BOTTOM
                   _buildLogoutButton(context),
                 ],
               ),
@@ -171,45 +156,24 @@ class ProfilePage extends StatelessWidget {
   // --- UI Components ---
 
   Widget _buildProfileImage(Color bg, Color header) {
-    return Stack(
-      alignment: Alignment.bottomRight,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
-          ),
-          child: const CircleAvatar(
-            radius: 55,
-            backgroundColor: Colors.white,
-            child: Text(
-              "K",
-              style: TextStyle(
-                color: Color(0xFF4CAF50),
-                fontSize: 45,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
+      ),
+      child: const CircleAvatar(
+        radius: 55,
+        backgroundColor: Colors.white,
+        child: Text(
+          "K",
+          style: TextStyle(
+            color: Color(0xFF4CAF50),
+            fontSize: 45,
+            fontWeight: FontWeight.w900,
           ),
         ),
-        GestureDetector(
-          onTap: () => HapticFeedback.mediumImpact(),
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: bg,
-              shape: BoxShape.circle,
-              border: Border.all(color: header, width: 3),
-            ),
-            child: const Icon(
-              Icons.photo_camera,
-              color: Colors.white,
-              size: 18,
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -240,10 +204,12 @@ class ProfilePage extends StatelessWidget {
   }
 
   Widget _buildTile(
+    BuildContext context,
     IconData icon,
     String title,
     Color accent, {
     Widget? trailing,
+    Widget? destination,
   }) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
@@ -272,25 +238,13 @@ class ProfilePage extends StatelessWidget {
           ),
       onTap: () {
         HapticFeedback.selectionClick();
+        if (destination != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => destination),
+          );
+        }
       },
-    );
-  }
-
-  Widget _buildBadge(String count) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF5ED5A8).withOpacity(0.15),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        count,
-        style: const TextStyle(
-          color: Color(0xFF5ED5A8),
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
     );
   }
 
@@ -299,12 +253,9 @@ class ProfilePage extends StatelessWidget {
       child: InkWell(
         onTap: () {
           HapticFeedback.heavyImpact();
-          // Navigates to Login and removes all previous screens from the stack
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(
-              builder: (context) => const LoginPage(),
-            ), // Ensure you import your LoginPage file
+            MaterialPageRoute(builder: (context) => const LoginPage()),
             (route) => false,
           );
         },
