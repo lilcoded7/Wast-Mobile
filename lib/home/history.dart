@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import '../providers/user_provider.dart';
+import '../constants/api_constants.dart';
 
 class ServiceHistoryPage extends StatefulWidget {
   const ServiceHistoryPage({super.key});
@@ -9,13 +15,80 @@ class ServiceHistoryPage extends StatefulWidget {
 
 class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
   String selectedFilter = "All";
+  List<dynamic> historyRequests = [];
+  bool isLoading = true;
+
   final List<String> filters = [
     "All",
+    "Pending",
+    "Accepted",
+    "Arrived",
     "Completed",
-    "Active",
-    "Scheduled",
     "Cancelled",
+    "Scheduled",
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    fetchHistory();
+  }
+
+  Future<void> fetchHistory() async {
+    setState(() => isLoading = true);
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final token = userProvider.authData?['access'];
+
+    String url = "http://127.0.0.1:8000/api/v2/wast/customer/collection/request/";
+    
+    if (selectedFilter != "All") {
+      url += "?status=${selectedFilter.toLowerCase()}";
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          historyRequests = data['results'];
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() => isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error loading history: $e")),
+        );
+      }
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'completed':
+        return Colors.green;
+      case 'pending':
+        return Colors.amber;
+      case 'cancelled':
+        return Colors.red;
+      case 'accepted':
+      case 'en_route':
+      case 'arrived':
+        return const Color(0xFF5ED5A8);
+      case 'scheduled':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +102,6 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. HEADER
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
               child: Column(
@@ -52,7 +124,7 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    "5 requests total",
+                    "${historyRequests.length} requests total",
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.5),
                       fontSize: 16,
@@ -61,76 +133,41 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
                 ],
               ),
             ),
-
-            // 2. HORIZONTAL FILTERS
             const SizedBox(height: 20),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               physics: const BouncingScrollPhysics(),
               child: Row(
-                children:
-                    filters
-                        .map((filter) => _buildFilterChip(filter, accentGreen))
-                        .toList(),
+                children: filters.map((filter) => _buildFilterChip(filter, accentGreen)).toList(),
               ),
             ),
-
-            // 3. HISTORY LIST
             const SizedBox(height: 20),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const BouncingScrollPhysics(),
-                children: [
-                  _historyItem(
-                    "Organic",
-                    "14 Ring Road East, Accra",
-                    "10 Apr 2026",
-                    "GH₵ 20",
-                    "Pending",
-                    Colors.amber,
-                    cardColor,
-                  ),
-                  _historyItem(
-                    "General",
-                    "Dansoman, Accra",
-                    "10 Apr 2026",
-                    "GH₵ 20",
-                    "Pending",
-                    Colors.amber,
-                    cardColor,
-                  ),
-                  _historyItem(
-                    "Recyclable",
-                    "Tema Community 1, Accra",
-                    "10 Apr 2026",
-                    "GH₵ 20",
-                    "Arrived",
-                    accentGreen,
-                    cardColor,
-                  ),
-                  _historyItem(
-                    "General",
-                    "12 Cantonments Road, Accra",
-                    "10 Apr 2026",
-                    "GH₵ 20",
-                    "Completed",
-                    Colors.green,
-                    cardColor,
-                  ),
-                  _historyItem(
-                    "Recyclable",
-                    "12 Cantonments Road, Accra",
-                    "9 Apr 2026",
-                    "GH₵ 20",
-                    "Completed",
-                    Colors.green,
-                    cardColor,
-                  ),
-                  const SizedBox(height: 100),
-                ],
-              ),
+              child: isLoading
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF5ED5A8)))
+                  : RefreshIndicator(
+                      onRefresh: fetchHistory,
+                      child: historyRequests.isEmpty
+                          ? const Center(child: Text("No history found", style: TextStyle(color: Colors.white54)))
+                          : ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              itemCount: historyRequests.length,
+                              itemBuilder: (context, index) {
+                                final item = historyRequests[index];
+                                return _historyItem(
+                                  item['waste_type'],
+                                  item['address'],
+                                  item['created_at'],
+                                  "GH₵ ${item['final_amount']}",
+                                  item['status'],
+                                  _getStatusColor(item['status']),
+                                  cardColor,
+                                );
+                              },
+                            ),
+                    ),
             ),
           ],
         ),
@@ -141,7 +178,10 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
   Widget _buildFilterChip(String label, Color accent) {
     bool isSelected = selectedFilter == label;
     return GestureDetector(
-      onTap: () => setState(() => selectedFilter = label),
+      onTap: () {
+        setState(() => selectedFilter = label);
+        fetchHistory();
+      },
       child: Container(
         margin: const EdgeInsets.only(right: 8),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -167,12 +207,15 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
   Widget _historyItem(
     String type,
     String address,
-    String date,
+    String dateStr,
     String price,
     String status,
     Color statusColor,
     Color bg,
   ) {
+    DateTime dateTime = DateTime.parse(dateStr);
+    String formattedDate = DateFormat('dd MMM yyyy').format(dateTime);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
@@ -186,7 +229,10 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [_typeBadge(type), _statusBadge(status, statusColor)],
+            children: [
+              _typeBadge(type[0].toUpperCase() + type.substring(1)),
+              _statusBadge(status[0].toUpperCase() + status.substring(1), statusColor)
+            ],
           ),
           const SizedBox(height: 12),
           Text(
@@ -202,7 +248,7 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                date,
+                formattedDate,
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.4),
                   fontSize: 14,
@@ -218,14 +264,6 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Icon(
-              Icons.chevron_right,
-              color: Colors.white.withOpacity(0.3),
-            ),
-          ),
         ],
       ),
     );
@@ -234,10 +272,10 @@ class _ServiceHistoryPageState extends State<ServiceHistoryPage> {
   Widget _typeBadge(String type) {
     IconData icon;
     Color color;
-    if (type == "Organic") {
+    if (type.toLowerCase() == "organic") {
       icon = Icons.eco;
       color = const Color(0xFF8BCA3E);
-    } else if (type == "Recyclable") {
+    } else if (type.toLowerCase() == "recyclable") {
       icon = Icons.recycling;
       color = Colors.blue;
     } else {
