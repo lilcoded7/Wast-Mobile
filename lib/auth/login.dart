@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:io';
 import '../providers/user_provider.dart';
+import '../constants/api_constants.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -12,11 +16,8 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  // Controllers
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
-
-  // State
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
@@ -27,6 +28,76 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  Future<void> _handleLogin() async {
+    if (_phoneController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter your credentials")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw "Location services are disabled. Please enable them to login.";
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw "Location permissions are denied";
+        }
+      }
+
+      Position position = await Geolocator.getCurrentPosition();
+
+      String deviceId = "unknown";
+      DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+        deviceId = androidInfo.id;
+      } else if (Platform.isIOS) {
+        IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+        deviceId = iosInfo.identifierForVendor ?? "unknown";
+      }
+
+      final response = await http.post(
+        Uri.parse(ApiConstants.login),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "phone_number": _phoneController.text,
+          "password": _passwordController.text,
+          "device_id": deviceId,
+          "latitude": position.latitude,
+          "longitude": position.longitude,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        Provider.of<UserProvider>(context, listen: false).setUser(responseData);
+
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw errorData['message'] ?? 'Invalid credentials';
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final primaryColor = Colors.green[700]!;
@@ -35,7 +106,6 @@ class _LoginPageState extends State<LoginPage> {
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Professional Linear Gradient Background
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -50,15 +120,12 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ),
-
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
                 children: [
                   const SizedBox(height: 40),
-
-                  // Header & Logo Section
                   Center(
                     child: Column(
                       children: [
@@ -91,10 +158,7 @@ class _LoginPageState extends State<LoginPage> {
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 40),
-
-                  // The Professional Login Card
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
@@ -124,8 +188,6 @@ class _LoginPageState extends State<LoginPage> {
                           style: TextStyle(color: Colors.grey, fontSize: 14),
                         ),
                         const SizedBox(height: 32),
-
-                        // Input Fields
                         _buildLabel("Phone Number"),
                         _buildTextField(
                           controller: _phoneController,
@@ -133,9 +195,7 @@ class _LoginPageState extends State<LoginPage> {
                           icon: Icons.phone_outlined,
                           type: TextInputType.phone,
                         ),
-
                         const SizedBox(height: 20),
-
                         _buildLabel("Password"),
                         _buildTextField(
                           controller: _passwordController,
@@ -143,13 +203,10 @@ class _LoginPageState extends State<LoginPage> {
                           icon: Icons.lock_outline,
                           isPassword: true,
                         ),
-
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
-                            onPressed: () {
-                              // Forgot password logic here
-                            },
+                            onPressed: () {},
                             child: Text(
                               "Forgot password?",
                               style: TextStyle(
@@ -159,10 +216,7 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 16),
-
-                        // Sign In Button
                         SizedBox(
                           width: double.infinity,
                           height: 56,
@@ -175,38 +229,33 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                               elevation: 0,
                             ),
-                            child:
-                                _isLoading
-                                    ? const SizedBox(
-                                      height: 24,
-                                      width: 24,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                    : const Text(
-                                      "Sign In",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    height: 24,
+                                    width: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
                                     ),
+                                  )
+                                : const Text(
+                                    "Sign In",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
                           ),
                         ),
-
                         const SizedBox(height: 24),
-
-                        // Standard Sign Up
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             const Text("Don't have an account? "),
                             GestureDetector(
-                              onTap:
-                                  () =>
-                                      Navigator.pushNamed(context, '/register'),
+                              onTap: () =>
+                                  Navigator.pushNamed(context, '/register'),
                               child: Text(
                                 "Sign up",
                                 style: TextStyle(
@@ -220,12 +269,8 @@ class _LoginPageState extends State<LoginPage> {
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 40),
-
-                  // Collector Registration Section
                   _buildCollectorBanner(primaryColor),
-
                   const SizedBox(height: 32),
                 ],
               ),
@@ -235,8 +280,6 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
-
-  // --- UI Helper Widgets ---
 
   Widget _buildCollectorBanner(Color primaryColor) {
     return Container(
@@ -302,21 +345,17 @@ class _LoginPageState extends State<LoginPage> {
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(icon, size: 20, color: Colors.grey),
-        suffixIcon:
-            isPassword
-                ? IconButton(
-                  icon: Icon(
-                    _isPasswordVisible
-                        ? Icons.visibility
-                        : Icons.visibility_off,
-                    size: 20,
-                  ),
-                  onPressed:
-                      () => setState(
-                        () => _isPasswordVisible = !_isPasswordVisible,
-                      ),
-                )
-                : null,
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                  size: 20,
+                ),
+                onPressed: () => setState(
+                  () => _isPasswordVisible = !_isPasswordVisible,
+                ),
+              )
+            : null,
         filled: true,
         fillColor: Colors.grey[100],
         border: OutlineInputBorder(
@@ -329,54 +368,5 @@ class _LoginPageState extends State<LoginPage> {
         ),
       ),
     );
-  }
-
-  Future<void> _handleLogin() async {
-    // Basic validation check
-    if (_phoneController.text.isEmpty || _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter your credentials")),
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      final response = await http.post(
-        Uri.parse("http://127.0.0.1:8000/api/v1/accounts/auth/login/"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "phone_number": _phoneController.text,
-          "password": _passwordController.text,
-        }),
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-
-        // Save response data to State Management
-        Provider.of<UserProvider>(context, listen: false).setUser(responseData);
-
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/home');
-        }
-      } else {
-        final errorData = jsonDecode(response.body);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              "Login Failed: ${errorData['message'] ?? 'Invalid credentials'}",
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("An error occurred: $e")));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
   }
 }

@@ -1,8 +1,13 @@
 import 'dart:ui';
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import '../providers/user_provider.dart';
+import '../constants/api_constants.dart';
 
 import 'history.dart';
 import 'profile_screen.dart';
@@ -12,13 +17,85 @@ import 'report_dumping.dart';
 import 'tracking_page.dart';
 import 'notification.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  Timer? _trackingTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAuthAndStartTracking();
+    });
+  }
+
+  @override
+  void dispose() {
+    _trackingTimer?.cancel();
+    super.dispose();
+  }
+
+  void _checkAuthAndStartTracking() {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+
+    if (!userProvider.isAuthenticated) {
+      Navigator.pushReplacementNamed(context, '/login');
+      return;
+    }
+
+    _trackingTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      _sendLocationUpdate();
+    });
+  }
+
+  Future<void> _sendLocationUpdate() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    if (!userProvider.isAuthenticated) return;
+
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      final response = await http.post(
+        Uri.parse(ApiConstants.trackLocation),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer ${userProvider.authData?['access']}",
+        },
+        body: jsonEncode({
+          "latitude": position.latitude,
+          "longitude": position.longitude,
+        }),
+      );
+
+      if (response.statusCode == 401) {
+        _handleSessionExpired();
+      }
+    } catch (e) {
+      debugPrint("Location update failed: $e");
+    }
+  }
+
+  void _handleSessionExpired() {
+    _trackingTimer?.cancel();
+    Provider.of<UserProvider>(context, listen: false).logout();
+    Navigator.pushReplacementNamed(context, '/login');
+  }
 
   @override
   Widget build(BuildContext context) {
     final userProvider = Provider.of<UserProvider>(context);
-    final userName = userProvider.user?['username'] ?? "Guest";
+    final userData = userProvider.user;
+    final collectorData = userProvider.authData?['collector'];
+
+    final displayName = collectorData?['first_name'] ?? userData?['phone_number'] ?? "User";
 
     const Color bgColor = Color(0xFF061405);
     const Color cardColor = Color(0xFF132314);
@@ -73,7 +150,7 @@ class HomeScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              "Good morning,",
+                              "Welcome back,",
                               style: TextStyle(
                                 color: Colors.white70,
                                 fontSize: 18,
@@ -81,8 +158,8 @@ class HomeScreen extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              userName,
-                              style: TextStyle(
+                              displayName,
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 32,
                                 fontWeight: FontWeight.w900,
