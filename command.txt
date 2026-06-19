@@ -4,3 +4,7 @@ open -a Simulator
 
 xcrun simctl list devices
 xcrun simctl boot "iPhone 15"
+
+/Users/macbook/Desktop/wast/Wast-Mobile/lib/services/app_config.dart:
+
+command to run to check the current iP : ipconfig getifaddr en0

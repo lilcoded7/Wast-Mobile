@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:provider/provider.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'dart:io';
-import '../providers/user_provider.dart';
+import '../services/api_service.dart';
 import '../constants/api_constants.dart';
+import 'customer_signup.dart';
+import 'password_screen.dart';
+
+const Color _kBg         = Color(0xFFF0F7F0);
+const Color _kPrimary     = Color(0xFF2E7D32);
+const Color _kCard        = Colors.white;
+const Color _kLightGreen  = Color(0xFFE8F5E9);
+const Color _kTextDark    = Color(0xFF1A1A1A);
+const Color _kTextGray    = Color(0xFF757575);
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -16,160 +19,134 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _phoneController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _isPasswordVisible = false;
-  bool _isLoading = false;
+  final _phoneCtrl = TextEditingController();
+  bool _loading = false;
 
   @override
   void dispose() {
-    _phoneController.dispose();
-    _passwordController.dispose();
+    _phoneCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _handleLogin() async {
-    if (_phoneController.text.isEmpty || _passwordController.text.isEmpty) {
+  Future<void> _continue() async {
+    final phone = _phoneCtrl.text.trim();
+    if (phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter your credentials")),
+        const SnackBar(content: Text('Please enter your phone number')),
       );
       return;
     }
-
-    setState(() => _isLoading = true);
-
+    setState(() => _loading = true);
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        throw "Location services are disabled. Please enable them to login.";
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          throw "Location permissions are denied";
-        }
-      }
-
-      Position position = await Geolocator.getCurrentPosition();
-
-      String deviceId = "unknown";
-      DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-      if (Platform.isAndroid) {
-        AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-        deviceId = androidInfo.id;
-      } else if (Platform.isIOS) {
-        IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
-        deviceId = iosInfo.identifierForVendor ?? "unknown";
-      }
-
-      final response = await http.post(
-        Uri.parse(ApiConstants.login),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "phone_number": _phoneController.text,
-          "password": _passwordController.text,
-          "device_id": deviceId,
-          "latitude": position.latitude,
-          "longitude": position.longitude,
-        }),
+      final data = await ApiService.post(
+        ApiConstants.checkPhone,
+        {'phone': phone},
+        authenticated: false,
       );
+      if (!mounted) return;
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        Provider.of<UserProvider>(context, listen: false).setUser(responseData);
-
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/home');
-        }
-      } else {
-        final errorData = jsonDecode(response.body);
-        throw errorData['message'] ?? 'Invalid credentials';
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
+      final exists = data['exists'] == true;
+      if (!exists) {
+        // New user — go to sign up with phone pre-filled
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CustomerSignupPage(initialPhone: phone),
+          ),
         );
+        return;
       }
+
+      final hasPassword = data['has_password'] == true;
+      final role = data['role'] as String? ?? 'customer';
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PasswordScreen(
+            phone: phone,
+            role: role,
+            mode: hasPassword
+                ? PasswordScreenMode.login
+                : PasswordScreenMode.setPassword,
+          ),
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to connect. Check your connection.')),
+      );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Colors.green[700]!;
-
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: _kBg,
       body: Stack(
         children: [
           Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  primaryColor.withOpacity(0.12),
-                  Colors.white,
-                  Colors.white,
-                ],
-                stops: const [0.0, 0.4, 1.0],
+                colors: [_kLightGreen, _kBg, _kBg],
+                stops: [0.0, 0.45, 1.0],
               ),
             ),
           ),
           SafeArea(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
                 children: [
-                  const SizedBox(height: 40),
-                  Center(
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: primaryColor,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.white,
-                            size: 32,
-                          ),
+                  const SizedBox(height: 52),
+
+                  Column(
+                    children: [
+                      Image.asset(
+                        'assets/bolaaba_logo.png',
+                        width: 110,
+                        height: 110,
+                        fit: BoxFit.contain,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Bɔla Aba',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                          color: _kPrimary,
+                          letterSpacing: -0.5,
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          "WastePick",
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: primaryColor,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const Text(
-                          "On-demand waste collection",
-                          style: TextStyle(color: Colors.grey, fontSize: 14),
-                        ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'On-demand waste collection',
+                        style: TextStyle(color: _kTextGray, fontSize: 14),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 40),
+
+                  const SizedBox(height: 32),
+
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: _kCard,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.grey[200]!),
+                      border: Border.all(color: const Color(0xFFE0E0E0)),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
+                          color: Colors.black.withValues(alpha: 0.04),
                           blurRadius: 20,
-                          offset: const Offset(0, 10),
+                          offset: const Offset(0, 8),
                         ),
                       ],
                     ),
@@ -177,69 +154,85 @@ class _LoginPageState extends State<LoginPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          "Welcome back",
+                          'Welcome back',
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
+                            color: _kTextDark,
                           ),
                         ),
+                        const SizedBox(height: 4),
                         const Text(
-                          "Sign in to your account",
-                          style: TextStyle(color: Colors.grey, fontSize: 14),
+                          'Enter your phone number to continue',
+                          style: TextStyle(color: _kTextGray, fontSize: 14),
                         ),
-                        const SizedBox(height: 32),
-                        _buildLabel("Phone Number"),
-                        _buildTextField(
-                          controller: _phoneController,
-                          hint: "024 000 0000",
-                          icon: Icons.phone_outlined,
-                          type: TextInputType.phone,
-                        ),
-                        const SizedBox(height: 20),
-                        _buildLabel("Password"),
-                        _buildTextField(
-                          controller: _passwordController,
-                          hint: "Your password",
-                          icon: Icons.lock_outline,
-                          isPassword: true,
-                        ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: () {},
-                            child: Text(
-                              "Forgot password?",
-                              style: TextStyle(
-                                color: primaryColor,
-                                fontWeight: FontWeight.bold,
-                              ),
+                        const SizedBox(height: 24),
+
+                        const Text('Phone Number',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: _kTextDark)),
+                        const SizedBox(height: 8),
+
+                        TextField(
+                          controller: _phoneCtrl,
+                          keyboardType: TextInputType.phone,
+                          style: const TextStyle(color: _kTextDark),
+                          onSubmitted: (_) => _continue(),
+                          decoration: InputDecoration(
+                            hintText: '+233 24 000 0000',
+                            hintStyle: const TextStyle(color: _kTextGray),
+                            prefixIcon: const Icon(Icons.phone_outlined,
+                                size: 20, color: _kTextGray),
+                            filled: true,
+                            fillColor: const Color(0xFFF5F5F5),
+                            contentPadding:
+                                const EdgeInsets.symmetric(vertical: 16),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide:
+                                  const BorderSide(color: Color(0xFFE0E0E0)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                  color: _kPrimary, width: 1.5),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'First-time users will create a password, then sign in',
+                          style: TextStyle(color: _kTextGray, fontSize: 12),
+                        ),
+
+                        const SizedBox(height: 28),
+
                         SizedBox(
                           width: double.infinity,
-                          height: 56,
+                          height: 54,
                           child: ElevatedButton(
-                            onPressed: _isLoading ? null : _handleLogin,
+                            onPressed: _loading ? null : _continue,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryColor,
+                              backgroundColor: _kPrimary,
+                              disabledBackgroundColor:
+                                  _kPrimary.withValues(alpha: 0.6),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                                  borderRadius: BorderRadius.circular(14)),
                               elevation: 0,
                             ),
-                            child: _isLoading
+                            child: _loading
                                 ? const SizedBox(
-                                    height: 24,
-                                    width: 24,
+                                    height: 22, width: 22,
                                     child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
+                                        color: Colors.white, strokeWidth: 2))
                                 : const Text(
-                                    "Sign In",
+                                    'Continue',
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.bold,
@@ -248,19 +241,23 @@ class _LoginPageState extends State<LoginPage> {
                                   ),
                           ),
                         ),
-                        const SizedBox(height: 24),
+
+                        const SizedBox(height: 20),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Text("Don't have an account? "),
-                            GestureDetector(
-                              onTap: () =>
-                                  Navigator.pushNamed(context, '/register'),
-                              child: Text(
-                                "Sign up",
+                            const Text('New customer? ',
                                 style: TextStyle(
-                                  color: primaryColor,
+                                    color: _kTextGray, fontSize: 14)),
+                            GestureDetector(
+                              onTap: () => Navigator.pushNamed(
+                                  context, '/customer-signup'),
+                              child: const Text(
+                                'Sign up',
+                                style: TextStyle(
+                                  color: _kPrimary,
                                   fontWeight: FontWeight.bold,
+                                  fontSize: 14,
                                 ),
                               ),
                             ),
@@ -269,103 +266,69 @@ class _LoginPageState extends State<LoginPage> {
                       ],
                     ),
                   ),
+
+                  const SizedBox(height: 16),
+
+                  GestureDetector(
+                    onTap: () =>
+                        Navigator.pushNamed(context, '/collector-signup'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: _kCard,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                            color: _kPrimary.withValues(alpha: 0.35)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44, height: 44,
+                            decoration: BoxDecoration(
+                              color: _kLightGreen,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.local_shipping_outlined,
+                                color: _kPrimary, size: 22),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Want to collect waste?',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                        color: _kTextDark)),
+                                SizedBox(height: 2),
+                                Text('Register as a Collector',
+                                    style: TextStyle(
+                                        color: _kTextGray, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios,
+                              size: 14, color: _kPrimary),
+                        ],
+                      ),
+                    ),
+                  ),
+
                   const SizedBox(height: 40),
-                  _buildCollectorBanner(primaryColor),
-                  const SizedBox(height: 32),
                 ],
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildCollectorBanner(Color primaryColor) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-      decoration: BoxDecoration(
-        color: primaryColor.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: primaryColor.withOpacity(0.1)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            "Want to earn money collecting waste?",
-            style: TextStyle(color: Colors.grey[800], fontSize: 14),
-          ),
-          const SizedBox(height: 8),
-          InkWell(
-            onTap: () => Navigator.pushNamed(context, '/collector-register'),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  "Click here to register as a collector",
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Icon(Icons.arrow_forward, size: 16, color: primaryColor),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(
-        text,
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-    bool isPassword = false,
-    TextInputType type = TextInputType.text,
-  }) {
-    return TextField(
-      controller: controller,
-      obscureText: isPassword && !_isPasswordVisible,
-      keyboardType: type,
-      decoration: InputDecoration(
-        hintText: hint,
-        prefixIcon: Icon(icon, size: 20, color: Colors.grey),
-        suffixIcon: isPassword
-            ? IconButton(
-                icon: Icon(
-                  _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                  size: 20,
-                ),
-                onPressed: () => setState(
-                  () => _isPasswordVisible = !_isPasswordVisible,
-                ),
-              )
-            : null,
-        filled: true,
-        fillColor: Colors.grey[100],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[200]!),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[200]!),
-        ),
       ),
     );
   }
