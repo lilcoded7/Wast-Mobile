@@ -1114,6 +1114,9 @@ class AppProvider with ChangeNotifier {
         _incomingRequest = _mapIncomingRequest(first);
         _lastIncoming    = first;
       } else {
+        if (_incomingRequest != null) {
+          NotificationService.onIncomingRequestChanged(hasNew: false);
+        }
         _incomingRequest = null;
       }
       notifyListeners();

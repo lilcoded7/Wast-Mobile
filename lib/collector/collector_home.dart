@@ -149,6 +149,9 @@ class _HomeTabState extends State<_HomeTab> with WidgetsBindingObserver {
         customerName: incoming['customer_name'] as String?,
       );
     } else if (incoming == null) {
+      if (_lastIncomingRequest != null) {
+        NotificationService.onIncomingRequestChanged(hasNew: false);
+      }
       _lastIncomingRequest = null;
     }
   }
