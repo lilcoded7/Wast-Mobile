@@ -142,4 +142,10 @@ class ApiConstants {
   static String declineWithdrawal(int id) => '$baseUrl/admin/withdrawals/$id/decline/';
   static String resolveReport(int id) => '$baseUrl/admin/reports/$id/resolve/';
   static String commissionRule(int id) => '$baseUrl/admin/commissions/$id/';
+
+  // ── Geocoding (server-side Google Places / Geocoding) ─────────────────────
+  static String geoReverse(double lat, double lng) =>
+      '$baseUrl/geo/reverse/?lat=$lat&lng=$lng';
+  static String geoSearch(String query) =>
+      '$baseUrl/geo/search/?q=${Uri.encodeComponent(query)}';
 }

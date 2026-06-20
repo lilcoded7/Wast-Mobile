@@ -66,7 +66,8 @@ class _RequestPickupPageState extends State<RequestPickupPage> {
       );
       return;
     }
-    if (_address.trim().toLowerCase() == 'current location') {
+    if (_address.trim().toLowerCase() == 'current location' ||
+        looksLikeCoordinates(_address)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please pick a valid address from search or GPS')),
       );

@@ -2203,6 +2203,17 @@ class _AdminCreateUserPageState extends State<_AdminCreateUserPage> with SingleT
       );
       return;
     }
+    if (looksLikeCoordinates(_invLocation.text)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Location must be a place name, not GPS coordinates. '
+            'Tap the GPS icon and pick an address from search.',
+          ),
+        ),
+      );
+      return;
+    }
 
     setState(() => _loading = true);
     try {
@@ -2224,7 +2235,14 @@ class _AdminCreateUserPageState extends State<_AdminCreateUserPage> with SingleT
         content: Text(temp != null ? 'Investor created. Temp password: $temp' : 'Investor created'),
       ));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        final msg = e.toString();
+        final friendly = msg.contains('password') && msg.contains('required')
+            ? 'Password is auto-generated for new investors. '
+              'Please deploy the latest backend to production, then try again.'
+            : msg;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendly)));
+      }
     } finally { if (mounted) setState(() => _loading = false); }
   }
 
