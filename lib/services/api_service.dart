@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io' as dart_io;
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
@@ -242,23 +243,16 @@ class ApiService {
     dart_io.File? imageFile,
     String imageField = 'profile_image',
   }) async {
-    final token = await getAccessToken();
-    final client = _buildClient();
-    try {
+    return _sendMultipart(() async {
       final request = http.MultipartRequest('PATCH', Uri.parse(url));
+      final token = await getAccessToken();
       if (token != null) request.headers['Authorization'] = 'Bearer $token';
       request.fields.addAll(fields);
       if (imageFile != null) {
-        request.files.add(await http.MultipartFile.fromPath(imageField, imageFile.path));
+        request.files.add(await _multipartImageFile(imageField, imageFile));
       }
-      final streamed = await client.send(request).timeout(_timeout);
-      final res = await http.Response.fromStream(streamed);
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        if (res.body.isEmpty) return {};
-        return jsonDecode(res.body) as Map<String, dynamic>;
-      }
-      throw Exception('Upload failed: ${res.statusCode} ${res.body}');
-    } finally { client.close(); }
+      return request;
+    });
   }
 
   /// Multipart POST for KYC document uploads.
@@ -294,25 +288,71 @@ class ApiService {
     String imageField = 'profile_image',
     Map<String, dart_io.File> files = const {},
   }) async {
-    final token = await getAccessToken();
-    final client = _buildClient();
-    try {
+    return _sendMultipart(() async {
       final request = http.MultipartRequest('PUT', Uri.parse(url));
+      final token = await getAccessToken();
       if (token != null) request.headers['Authorization'] = 'Bearer $token';
       request.fields.addAll(fields);
       if (imageFile != null) {
-        request.files.add(await http.MultipartFile.fromPath(imageField, imageFile.path));
+        request.files.add(await _multipartImageFile(imageField, imageFile));
       }
       for (final entry in files.entries) {
-        request.files.add(await http.MultipartFile.fromPath(entry.key, entry.value.path));
+        request.files.add(await _multipartImageFile(entry.key, entry.value));
       }
-      final streamed = await client.send(request).timeout(_timeout);
-      final res = await http.Response.fromStream(streamed);
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        if (res.body.isEmpty) return {};
-        return jsonDecode(res.body) as Map<String, dynamic>;
+      return request;
+    });
+  }
+
+  static Future<http.MultipartFile> _multipartImageFile(
+    String field,
+    dart_io.File file,
+  ) async {
+    final path = file.path;
+    final ext = path.contains('.') ? path.split('.').last.toLowerCase() : 'jpg';
+    final normalizedExt = (ext == 'heic' || ext == 'heif') ? 'jpg' : ext;
+    final mime = normalizedExt == 'png' ? 'image/png' : 'image/jpeg';
+    return http.MultipartFile.fromPath(
+      field,
+      path,
+      filename: 'upload.$normalizedExt',
+      contentType: MediaType.parse(mime),
+    );
+  }
+
+  static Future<Map<String, dynamic>> _sendMultipart(
+    Future<http.MultipartRequest> Function() buildRequest,
+  ) async {
+    Future<http.Response> sendOnce() async {
+      final client = _buildClient();
+      try {
+        final request = await buildRequest();
+        final streamed = await client.send(request).timeout(_timeout);
+        return http.Response.fromStream(streamed);
+      } finally {
+        client.close();
       }
-      throw Exception('Upload failed: ${res.statusCode} ${res.body}');
-    } finally { client.close(); }
+    }
+
+    var res = await sendOnce();
+    if (res.statusCode == 401) {
+      final ok = await _refresh();
+      if (ok) {
+        res = await sendOnce();
+      } else {
+        await clearTokens();
+        throw ApiException('Session expired. Please log in again.', statusCode: 401);
+      }
+    }
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      return _decode(res);
+    }
+
+    final body = _decode(res);
+    final msg = body['error'] ??
+        body['detail'] ??
+        body['message'] ??
+        'Upload failed (${res.statusCode})';
+    throw ApiException(msg.toString(), statusCode: res.statusCode);
   }
 }

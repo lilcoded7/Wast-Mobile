@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/profile_avatar.dart';
 import '../providers/user_provider.dart';
 import '../services/api_service.dart';
 import '../constants/api_constants.dart';
@@ -93,41 +93,11 @@ class ProfilePage extends StatelessWidget {
                             shape: BoxShape.circle,
                           ),
                           clipBehavior: Clip.hardEdge,
-                          child: provider.profileImageUrl != null
-                              ? CachedNetworkImage(
-                                  imageUrl: provider.profileImageUrl!,
-                                  fit: BoxFit.cover,
-                                  placeholder: (_, __) => Center(
-                                    child: Text(
-                                      provider.displayInitial,
-                                      style: const TextStyle(
-                                        color: _kPrimary,
-                                        fontSize: 40,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  errorWidget: (_, __, ___) => Center(
-                                    child: Text(
-                                      provider.displayInitial,
-                                      style: const TextStyle(
-                                        color: _kPrimary,
-                                        fontSize: 40,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              : Center(
-                                  child: Text(
-                                    provider.displayInitial,
-                                    style: const TextStyle(
-                                      color: _kPrimary,
-                                      fontSize: 40,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
+                          child: ProfileAvatar(
+                            imageUrl: provider.profileImageUrl,
+                            radius: 50,
+                            fallbackInitial: provider.displayInitial,
+                          ),
                         ),
                         GestureDetector(
                           onTap: () => _showEditSheet(context),
@@ -450,7 +420,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     try {
       final provider = context.read<AppProvider>();
       if (_imageFile != null) {
-        final data = await ApiService.patchMultipart(
+        await ApiService.patchMultipart(
           ApiConstants.customerProfileUpdate,
           {
             'first_name': first,
@@ -459,26 +429,13 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
           },
           imageFile: _imageFile,
         );
-        if (data.isNotEmpty) {
-          if (data['profile_image'] != null) {
-            provider.mergeProfileImage(data['profile_image'] as String);
-          } else if (data.containsKey('user')) {
-            provider.setCurrentUser(data['user'] as Map<String, dynamic>);
-          } else if (data.containsKey('id') || data.containsKey('phone')) {
-            provider.setCurrentUser(data);
-          } else {
-            final refreshed = await ApiService.get(ApiConstants.customerProfileUpdate);
-            if (refreshed['profile_image'] != null) {
-              provider.mergeProfileImage(refreshed['profile_image'] as String);
-            }
-            provider.setCurrentUser({...?provider.currentUser, ...refreshed});
-          }
-        } else {
-          final refreshed = await ApiService.get(ApiConstants.customerProfileUpdate);
-          if (refreshed['profile_image'] != null) {
-            provider.mergeProfileImage(refreshed['profile_image'] as String);
-          }
-        }
+        await provider.refreshProfileImageFromServer();
+        provider.setCurrentUser({
+          ...?provider.currentUser,
+          'first_name': first,
+          'last_name': last,
+          if (email.isNotEmpty) 'email': email,
+        });
       } else {
         await provider.updateProfile({
           'first_name': first,

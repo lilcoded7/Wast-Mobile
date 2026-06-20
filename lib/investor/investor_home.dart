@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/profile_avatar.dart';
 import 'dart:io';
 import '../providers/user_provider.dart';
 import '../services/api_service.dart';
@@ -728,20 +728,18 @@ class _ProfileTabState extends State<_ProfileTab> {
     try {
       final provider = context.read<AppProvider>();
       if (_imageFile != null) {
-        final data = await ApiService.putMultipart(ApiConstants.investorProfile, {
+        await ApiService.putMultipart(ApiConstants.investorProfile, {
           'first_name': _firstName.text.trim(),
           'last_name': _lastName.text.trim(),
           'email': _email.text.trim(),
           'company_name': _company.text.trim(),
           'location': _location.text.trim(),
         }, imageFile: _imageFile);
-        if (data['profile_image'] != null) {
-          provider.mergeProfileImage(data['profile_image'] as String);
-          setState(() {
-            _photoUrl = data['profile_image'] as String;
-            _imageFile = null;
-          });
-        }
+        await provider.refreshProfileImageFromServer();
+        setState(() {
+          _photoUrl = provider.profileImageUrl;
+          _imageFile = null;
+        });
       } else {
         await ApiService.put(ApiConstants.investorProfile, {
           'first_name': _firstName.text.trim(),
@@ -784,7 +782,7 @@ class _ProfileTabState extends State<_ProfileTab> {
             backgroundColor: _kPrimary.withValues(alpha: 0.1),
             backgroundImage: _imageFile != null
                 ? FileImage(_imageFile!) as ImageProvider
-                : (_photoUrl != null ? CachedNetworkImageProvider(_photoUrl!) as ImageProvider : null),
+                : (_photoUrl != null ? profileImageProvider(_photoUrl) : null),
             child: (_imageFile == null && _photoUrl == null)
                 ? const Icon(Icons.person, size: 44, color: _kPrimary)
                 : null,

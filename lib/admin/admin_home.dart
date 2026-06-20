@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/profile_avatar.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
@@ -830,7 +831,7 @@ class _CollectorCard extends StatelessWidget {
               radius: 24,
               backgroundColor: _kPrimary.withOpacity(0.1),
               backgroundImage: item['profile_image'] != null
-                  ? CachedNetworkImageProvider(item['profile_image'] as String) as ImageProvider
+                  ? profileImageProvider(item['profile_image'] as String)
                   : null,
               child: item['profile_image'] == null
                   ? const Icon(Icons.person, color: _kPrimary, size: 26)
@@ -998,7 +999,7 @@ class _CollectorDetailPageState extends State<_CollectorDetailPage> {
                     radius: 40,
                     backgroundColor: _kPrimary.withOpacity(0.1),
                     backgroundImage: c['profile_image'] != null
-                        ? CachedNetworkImageProvider(c['profile_image'] as String) as ImageProvider
+                        ? profileImageProvider(c['profile_image'] as String)
                         : null,
                     child: c['profile_image'] == null ? const Icon(Icons.person, size: 40, color: _kPrimary) : null,
                   ),
@@ -1730,7 +1731,7 @@ class _CustomersPageState extends State<_CustomersPage> {
                               leading: CircleAvatar(
                                 backgroundColor: _kPrimary.withOpacity(0.1),
                                 backgroundImage: c['profile_image'] != null
-                                    ? CachedNetworkImageProvider(c['profile_image'] as String) as ImageProvider
+                                    ? profileImageProvider(c['profile_image'] as String)
                                     : null,
                                 child: c['profile_image'] == null ? const Icon(Icons.person, color: _kPrimary) : null,
                               ),
@@ -2461,25 +2462,24 @@ class _AdminProfilePageState extends State<_AdminProfilePage> {
   Future<void> _save() async {
     setState(() => _loading = true);
     try {
-      final data = await ApiService.patchMultipart(ApiConstants.adminProfile, {
+      await ApiService.patchMultipart(ApiConstants.adminProfile, {
         'first_name': _firstName.text,
         'last_name': _lastName.text,
         'email': _email.text,
         'phone': _phone.text,
         if (_password.text.isNotEmpty) 'password': _password.text,
       }, imageFile: _imageFile, imageField: 'profile_image');
-      final imageUrl = data['profile_image'] as String?;
+      await context.read<AppProvider>().refreshProfileImageFromServer();
       await _loadProfile();
       if (mounted) {
         setState(() {
-          if (imageUrl != null) {
-            final bust = DateTime.now().millisecondsSinceEpoch;
+          _imageFile = null;
+          if (context.read<AppProvider>().profileImageUrl != null) {
             _profile = {
               ...?_profile,
-              'profile_image': imageUrl.contains('?') ? imageUrl : '$imageUrl?v=$bust',
+              'profile_image': context.read<AppProvider>().profileImageUrl,
             };
           }
-          _imageFile = null;
         });
       }
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated!')));
@@ -2509,7 +2509,7 @@ class _AdminProfilePageState extends State<_AdminProfilePage> {
                   backgroundImage: _imageFile != null
                       ? FileImage(_imageFile!) as ImageProvider
                       : (_profile?['profile_image'] != null
-                          ? CachedNetworkImageProvider(_profile!['profile_image'] as String) as ImageProvider
+                          ? profileImageProvider(_profile!['profile_image'] as String)
                           : null),
                   child: (_imageFile == null && _profile?['profile_image'] == null)
                       ? const Icon(Icons.admin_panel_settings, size: 50, color: _kPrimary)

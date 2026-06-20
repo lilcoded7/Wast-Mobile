@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/api_service.dart';
 import '../services/app_config.dart';
+import '../widgets/profile_avatar.dart';
 import '../services/notification_service.dart';
 import '../constants/api_constants.dart';
 import '../utils/parse_utils.dart';
@@ -172,11 +173,32 @@ class AppProvider with ChangeNotifier {
     if (url == null || url.isEmpty) return;
     _profileImageVersion = DateTime.now().millisecondsSinceEpoch;
     _currentUser ??= {};
-    _currentUser!['profile_image'] = url;
+    final resolved = url.startsWith('http') ? url : '${AppConfig.baseUrl}$url';
+    _currentUser!['profile_image'] = resolved;
     if (_collectorProfile != null) {
-      _collectorProfile!['profile_image'] = url;
+      _collectorProfile!['profile_image'] = resolved;
     }
+    SslImageLoader.bustCache(resolved);
     notifyListeners();
+  }
+
+  Future<void> refreshProfileImageFromServer() async {
+    try {
+      final Map<String, dynamic> data;
+      if (_isAdmin) {
+        data = await ApiService.get(ApiConstants.adminProfile);
+      } else if (_isCollector) {
+        data = await ApiService.get(ApiConstants.collectorProfile);
+      } else if (_isInvestor) {
+        data = await ApiService.get(ApiConstants.investorProfile);
+      } else {
+        data = await ApiService.get(ApiConstants.customerProfileUpdate);
+      }
+      final image = data['profile_image'] as String?;
+      if (image != null && image.isNotEmpty) {
+        mergeProfileImage(image);
+      }
+    } catch (_) {}
   }
 
   // Sekondi-Takoradi service area — keep defaults aligned with home map.
@@ -997,16 +1019,12 @@ class AppProvider with ChangeNotifier {
   }
 
   Future<void> uploadCollectorProfilePhoto(String filePath) async {
-    final data = await ApiService.putMultipart(
+    await ApiService.putMultipart(
       ApiConstants.collectorProfile,
       {},
       imageFile: File(filePath),
     );
-    if (data['profile_image'] != null) {
-      mergeProfileImage(data['profile_image'] as String);
-    } else {
-      notifyListeners();
-    }
+    await refreshProfileImageFromServer();
   }
 
   // ── Collector — toggle online ──────────────────────────────────────────────

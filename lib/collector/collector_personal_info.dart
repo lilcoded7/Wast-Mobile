@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/profile_avatar.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 
@@ -165,7 +165,7 @@ class _CollectorPersonalInfoPageState extends State<CollectorPersonalInfoPage> {
                       borderRadius: BorderRadius.circular(20),
                       image: photoUrl != null
                           ? DecorationImage(
-                              image: CachedNetworkImageProvider(photoUrl),
+                              image: profileImageProvider(photoUrl)!,
                               fit: BoxFit.cover,
                             )
                           : null,
