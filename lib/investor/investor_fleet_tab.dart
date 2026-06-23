@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../constants/api_constants.dart';
 import '../services/api_service.dart';
@@ -127,60 +129,9 @@ class _InvestorFleetTabState extends State<InvestorFleetTab> {
   }
 
   Future<void> _addCollector() async {
-    final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-    final typeCtrl = TextEditingController();
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 20, right: 20, top: 20,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Add Collector', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 12),
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Full name')),
-            TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Phone')),
-            TextField(controller: typeCtrl, decoration: const InputDecoration(labelText: 'Vehicle type')),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  try {
-                    await ApiService.post(ApiConstants.investorCollectors, {
-                      'name': nameCtrl.text.trim(),
-                      'phone': phoneCtrl.text.trim(),
-                      'vehicle_type': typeCtrl.text.trim(),
-                    });
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Collector submitted for admin approval')),
-                      );
-                    }
-                    _load();
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: _kPrimary),
-                child: const Text('Submit for Approval'),
-              ),
-            ),
-          ],
-        ),
-      ),
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => _AddCollectorPage(onSubmitted: () { _load(); })),
     );
   }
 
@@ -311,4 +262,204 @@ class _InvestorFleetTabState extends State<InvestorFleetTab> {
       ],
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Add Collector Page — full KYC form
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AddCollectorPage extends StatefulWidget {
+  final VoidCallback onSubmitted;
+  const _AddCollectorPage({required this.onSubmitted});
+
+  @override
+  State<_AddCollectorPage> createState() => _AddCollectorPageState();
+}
+
+class _AddCollectorPageState extends State<_AddCollectorPage> {
+  final _picker = ImagePicker();
+  bool _loading = false;
+
+  static const _vehicleTypes = ['Pickup Truck', 'Tricycle', 'Motorcycle', 'Van', 'Mini Truck'];
+
+  final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _ghanaCardCtrl = TextEditingController();
+  final _licenseCtrl = TextEditingController();
+  final _vehicleNameCtrl = TextEditingController();
+  final _vehicleNumberCtrl = TextEditingController();
+  String _vehicleType = 'Pickup Truck';
+  File? _ghanaFront;
+  File? _ghanaBack;
+  File? _licenseFront;
+  File? _licenseBack;
+  File? _vehiclePhoto;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose(); _phoneCtrl.dispose(); _ghanaCardCtrl.dispose();
+    _licenseCtrl.dispose(); _vehicleNameCtrl.dispose(); _vehicleNumberCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto(void Function(File) onPicked) async {
+    final src = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (_) => SafeArea(child: Wrap(children: [
+        ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Gallery'),
+            onTap: () => Navigator.pop(context, ImageSource.gallery)),
+        ListTile(leading: const Icon(Icons.camera_alt_outlined), title: const Text('Camera'),
+            onTap: () => Navigator.pop(context, ImageSource.camera)),
+      ])),
+    );
+    if (src == null) return;
+    final x = await _picker.pickImage(source: src, maxWidth: 1600, imageQuality: 85);
+    if (x != null && mounted) setState(() => onPicked(File(x.path)));
+  }
+
+  Widget _photoTile(File? file, VoidCallback onTap, {required String label}) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      height: 100,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: file != null ? _kPrimary : Colors.grey.shade300, width: 1.5),
+      ),
+      child: file != null
+          ? ClipRRect(borderRadius: BorderRadius.circular(11), child: Image.file(file, fit: BoxFit.cover, width: double.infinity))
+          : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.camera_alt_outlined, color: file != null ? _kPrimary : Colors.grey, size: 28),
+              const SizedBox(height: 4),
+              Text(label, style: const TextStyle(fontSize: 11, color: _kTextGray)),
+            ]),
+    ),
+  );
+
+  Widget _field(String label, TextEditingController c, {TextInputType? type}) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TextField(
+      controller: c,
+      keyboardType: type,
+      decoration: InputDecoration(
+        labelText: label,
+        filled: true, fillColor: Colors.white,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      ),
+    ),
+  );
+
+  Future<void> _submit() async {
+    if (_nameCtrl.text.trim().isEmpty || _phoneCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name and phone are required.')));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final fields = {
+        'name': _nameCtrl.text.trim(),
+        'phone': _phoneCtrl.text.trim(),
+        'vehicle_type': _vehicleType,
+        if (_ghanaCardCtrl.text.isNotEmpty) 'ghana_card_number': _ghanaCardCtrl.text.trim(),
+        if (_licenseCtrl.text.isNotEmpty) 'license_number': _licenseCtrl.text.trim(),
+        if (_vehicleNameCtrl.text.isNotEmpty) 'vehicle_name': _vehicleNameCtrl.text.trim(),
+        if (_vehicleNumberCtrl.text.isNotEmpty) 'vehicle_number': _vehicleNumberCtrl.text.trim(),
+      };
+      final images = <String, File>{};
+      if (_ghanaFront != null) images['ghana_card_front'] = _ghanaFront!;
+      if (_ghanaBack != null) images['ghana_card_back'] = _ghanaBack!;
+      if (_licenseFront != null) images['license_front'] = _licenseFront!;
+      if (_licenseBack != null) images['license_back'] = _licenseBack!;
+      if (_vehiclePhoto != null) images['vehicle_photo'] = _vehiclePhoto!;
+
+      if (images.isNotEmpty) {
+        await ApiService.postMultipart(ApiConstants.investorCollectors, fields, images);
+      } else {
+        await ApiService.post(ApiConstants.investorCollectors, fields);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Collector submitted for admin approval.')),
+      );
+      widget.onSubmitted();
+      Navigator.pop(context);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFFF5F5F5),
+    appBar: AppBar(
+      backgroundColor: Colors.white, elevation: 0,
+      title: const Text('Add Collector', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w800)),
+    ),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _field('Full Name', _nameCtrl),
+        _field('Phone', _phoneCtrl, type: TextInputType.phone),
+        _field('Ghana Card Number', _ghanaCardCtrl),
+        const Text('Ghana Card (front & back)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: _photoTile(_ghanaFront, () => _pickPhoto((f) => _ghanaFront = f), label: 'Front')),
+          const SizedBox(width: 10),
+          Expanded(child: _photoTile(_ghanaBack, () => _pickPhoto((f) => _ghanaBack = f), label: 'Back')),
+        ]),
+        const SizedBox(height: 12),
+        _field('License Number', _licenseCtrl),
+        const Text('Driver License (front & back)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: _photoTile(_licenseFront, () => _pickPhoto((f) => _licenseFront = f), label: 'Front')),
+          const SizedBox(width: 10),
+          Expanded(child: _photoTile(_licenseBack, () => _pickPhoto((f) => _licenseBack = f), label: 'Back')),
+        ]),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: InputDecorator(
+            decoration: InputDecoration(
+              labelText: 'Vehicle Type',
+              filled: true, fillColor: Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _vehicleType,
+                isExpanded: true,
+                items: _vehicleTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                onChanged: (v) { if (v != null) setState(() => _vehicleType = v); },
+              ),
+            ),
+          ),
+        ),
+        _field('Vehicle Name (optional)', _vehicleNameCtrl),
+        _field('Registration Number', _vehicleNumberCtrl),
+        const Text('Vehicle Photo', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        const SizedBox(height: 8),
+        _photoTile(_vehiclePhoto, () => _pickPhoto((f) => _vehiclePhoto = f), label: 'Vehicle'),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _loading ? null : _submit,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _kPrimary,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            child: _loading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Text('Submit for Approval', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    ),
+  );
 }

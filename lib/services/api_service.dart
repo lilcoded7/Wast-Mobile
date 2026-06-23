@@ -109,6 +109,14 @@ class ApiService {
     return h;
   }
 
+  static String? _firstFieldError(Map<String, dynamic> body) {
+    for (final v in body.values) {
+      if (v is List && v.isNotEmpty) return v.first?.toString();
+      if (v is String && v.isNotEmpty) return v;
+    }
+    return null;
+  }
+
   static Map<String, dynamic> _decode(http.Response res) {
     if (res.body.isEmpty) return {};
     try {
@@ -138,6 +146,7 @@ class ApiService {
     final msg = body['error'] ??
         body['detail'] ??
         body['message'] ??
+        _firstFieldError(body) ??
         'Request failed (${res.statusCode})';
     throw ApiException(msg.toString(), statusCode: res.statusCode);
   }

@@ -232,16 +232,6 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
       );
       return;
     }
-    final address = result['address'] as String? ?? '';
-    if (looksLikeCoordinates(address)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not resolve a street name. Try searching manually.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
     Navigator.pop(context, result);
   }
 
@@ -281,17 +271,12 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
         return;
       }
 
-      final address = await reverseGeocodeAddress(pos.latitude, pos.longitude);
+      var address = await reverseGeocodeAddress(pos.latitude, pos.longitude);
       if (!mounted) return;
 
-      if (looksLikeCoordinates(address)) {
-        setState(() {
-          _gpsError =
-              'Could not resolve your GPS to a street name. '
-              'Please search for your area or landmark below.';
-          _gpsLoading = false;
-        });
-        return;
+      // If geocoding only returned raw coords, show a friendly label instead.
+      if (looksLikeCoordinates(address) || address.trim().isEmpty) {
+        address = 'My Location (${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)})';
       }
 
       Navigator.pop(context, {

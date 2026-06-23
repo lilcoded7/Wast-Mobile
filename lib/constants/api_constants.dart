@@ -102,6 +102,8 @@ class ApiConstants {
       '$baseUrl/customer/requests/$id/skip-collector/';
   static String recordPayment(int id) =>
       '$baseUrl/customer/requests/$id/payment/';
+  static String verifyMoMoPayment(int id) =>
+      '$baseUrl/customer/requests/$id/payment/verify/';
   static String cancelSchedule(int id) => '$baseUrl/customer/schedules/$id/';
   static String deleteAddress(int id) => '$baseUrl/customer/addresses/$id/';
   static String deletePaymentMethod(int id) =>
@@ -142,6 +144,20 @@ class ApiConstants {
   static String declineWithdrawal(int id) => '$baseUrl/admin/withdrawals/$id/decline/';
   static String resolveReport(int id) => '$baseUrl/admin/reports/$id/resolve/';
   static String commissionRule(int id) => '$baseUrl/admin/commissions/$id/';
+
+  // ── Password reset (OTP-based) ───────────────────────────────────────────
+  static String get forgotPassword => '$baseUrl/auth/forgot-password/';
+  static String get resetPassword => '$baseUrl/auth/reset-password/';
+
+  // ── Super-Admin ───────────────────────────────────────────────────────────
+  static String get superAdminBranches => '$baseUrl/super-admin/branches/';
+  static String superAdminBranch(int id) => '$baseUrl/super-admin/branches/$id/';
+  static String get superAdminAdmins => '$baseUrl/super-admin/admins/';
+  static String superAdminAdmin(int id) => '$baseUrl/super-admin/admins/$id/';
+  static String superAdminDeleteAdmin(int id) => '$baseUrl/super-admin/admins/$id/';
+  static String superAdminDeleteCustomer(int id) => '$baseUrl/super-admin/customers/$id/delete/';
+  static String superAdminDeleteCollector(int id) => '$baseUrl/super-admin/collectors/$id/delete/';
+  static String superAdminDeleteInvestor(int id) => '$baseUrl/super-admin/investors/$id/delete/';
 
   // ── Geocoding (server-side Google Places / Geocoding) ─────────────────────
   static String geoReverse(double lat, double lng) =>

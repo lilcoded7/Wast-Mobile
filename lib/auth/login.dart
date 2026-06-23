@@ -3,6 +3,7 @@ import '../services/api_service.dart';
 import '../constants/api_constants.dart';
 import 'customer_signup.dart';
 import 'password_screen.dart';
+import 'forgot_password.dart';
 
 const Color _kBg         = Color(0xFFF0F7F0);
 const Color _kPrimary     = Color(0xFF2E7D32);
@@ -242,7 +243,26 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 12),
+                        Center(
+                          child: GestureDetector(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const ForgotPasswordPage()),
+                            ),
+                            child: const Text(
+                              'Forgot password?',
+                              style: TextStyle(
+                                color: _kPrimary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [

@@ -60,16 +60,9 @@ class _RequestPickupPageState extends State<RequestPickupPage> {
       );
       return;
     }
-    if (_address.isEmpty) {
+    if (_lat == null || _lng == null || _address.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please set your pickup location')),
-      );
-      return;
-    }
-    if (_address.trim().toLowerCase() == 'current location' ||
-        looksLikeCoordinates(_address)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please pick a valid address from search or GPS')),
       );
       return;
     }

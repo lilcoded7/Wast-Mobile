@@ -31,12 +31,6 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_dartvm._tcp</string>
-	</array>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Allow the debugger to connect to the app for hot reload and debugging</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>WastePick tracks your location to provide real-time updates for waste collection services, even when the app is in the background.</string>
 	<key>NSLocationAlwaysUsageDescription</key>

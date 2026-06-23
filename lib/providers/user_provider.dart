@@ -22,6 +22,9 @@ class AppProvider with ChangeNotifier {
   bool get isCollector => _isCollector;
   bool get isAdmin => _isAdmin;
   bool get isInvestor => _isInvestor;
+  bool get isSuperAdmin =>
+      (_currentUser?['role'] as String?) == 'super_admin' ||
+      (_currentUser?['is_super_admin'] as bool? ?? false);
   Map<String, dynamic>? get currentUser => _currentUser;
 
   void setCurrentUser(Map<String, dynamic> user) {
@@ -29,7 +32,7 @@ class AppProvider with ChangeNotifier {
     final role = user['role'] as String? ?? 'customer';
     _isLoggedIn = true;
     _isCollector = role == 'collector';
-    _isAdmin = role == 'admin';
+    _isAdmin = role == 'admin' || role == 'super_admin';
     _isInvestor = role == 'investor';
     notifyListeners();
     // Load active request immediately on every customer authentication (login or restart)
@@ -255,7 +258,7 @@ class AppProvider with ChangeNotifier {
 
   static List<Map<String, dynamic>> _makeBins(List<List<dynamic>> rows) => rows
       .map((r) => {
-            'id': 0,
+            'id': null,
             'name': r[0] as String,
             'display_name': r[1] as String,
             'price': r[2] as int,
@@ -473,15 +476,52 @@ class AppProvider with ChangeNotifier {
       (_activeRequest?['payment_status'] as String?) == 'confirmed';
 
   Future<void> recordPayment(String paymentType, {int? paymentMethodId}) async {
+    throw Exception('Use payWithMoMo() for Mobile Money payments.');
+  }
+
+  /// Initiate Coded Pay MoMo and poll until confirmed or timeout (~2 min).
+  Future<void> payWithMoMo(String phoneNumber) async {
     final id = _activeRequest?['id'] as int?;
     if (id == null) return;
-    final body = <String, dynamic>{'payment_type': paymentType};
-    if (paymentMethodId != null) body['payment_method_id'] = paymentMethodId;
+    final phone = phoneNumber.trim();
+    if (phone.isEmpty) {
+      throw Exception('Enter your Mobile Money number.');
+    }
+
     try {
-      final data = await ApiService.post(ApiConstants.recordPayment(id), body);
-      _activeRequest = data;
-      _pendingPaymentType = paymentType;
-      notifyListeners();
+      final init = await ApiService.post(ApiConstants.recordPayment(id), {
+        'phone_number': phone,
+      });
+      final pickup = init['pickup'];
+      if (pickup is Map<String, dynamic>) {
+        _activeRequest = pickup;
+        notifyListeners();
+      }
+
+      for (var attempt = 0; attempt < 24; attempt++) {
+        await Future.delayed(const Duration(seconds: 5));
+        final result = await ApiService.get(ApiConstants.verifyMoMoPayment(id));
+        final codedStatus = (result['coded_pay_status'] as String?)?.toLowerCase();
+        final payStatus = (result['payment_status'] as String?)?.toLowerCase();
+        final updated = result['pickup'];
+        if (updated is Map<String, dynamic>) {
+          _activeRequest = updated;
+        }
+
+        if (payStatus == 'confirmed' || codedStatus == 'success') {
+          _pendingPaymentType = 'mobile_money';
+          notifyListeners();
+          return;
+        }
+        if (codedStatus == 'failed' || codedStatus == 'decline') {
+          final msg = result['message'] as String? ?? 'Payment failed. Try again.';
+          notifyListeners();
+          throw Exception(msg);
+        }
+      }
+      throw Exception(
+        'Payment timed out. Approve the USSD prompt on your phone and try again.',
+      );
     } on ApiException catch (e) {
       throw Exception(e.message);
     }
@@ -561,15 +601,12 @@ class AppProvider with ChangeNotifier {
     }
   }
 
-  Future<void> acceptProposedCollector({bool isCash = false}) async {
+  Future<void> acceptProposedCollector() async {
     if (requestStatus != 'proposed') return;
     final id = _activeRequest?['id'] as int?;
     if (id == null) return;
     try {
-      final data = await ApiService.post(
-        ApiConstants.acceptCollector(id),
-        {'payment_method': isCash ? 'cash' : 'digital'},
-      );
+      final data = await ApiService.post(ApiConstants.acceptCollector(id), {});
       _activeRequest = data;
       notifyListeners();
     } on ApiException catch (e) {
@@ -577,25 +614,9 @@ class AppProvider with ChangeNotifier {
     }
   }
 
-  // Called from the customer "Confirm & Pay" button.
-  // - If status == 'proposed' (collector grabbed manually): call accept first.
-  // - If status == 'assigned' (collector already accepted via their app): just record payment.
-  Future<void> payAndAccept(String paymentType) async {
-    if (requestStatus == 'proposed') {
-      await acceptProposedCollector(isCash: paymentType == 'cash');
-    }
-    final id = _activeRequest?['id'] as int?;
-    if (id == null) return;
-    try {
-      final data = await ApiService.post(ApiConstants.recordPayment(id), {
-        'payment_type': paymentType,
-      });
-      _activeRequest = data;
-      _pendingPaymentType = paymentType;
-      notifyListeners();
-    } on ApiException catch (e) {
-      throw Exception(e.message);
-    }
+  // Called from the customer "Confirm & Pay" button — MoMo only via Coded Pay.
+  Future<void> payAndAccept(String phoneNumber) async {
+    await payWithMoMo(phoneNumber);
   }
 
   Future<void> skipProposedCollector() async {
@@ -819,7 +840,7 @@ class AppProvider with ChangeNotifier {
           final m = p as Map<String, dynamic>;
           return {
             'id':        m['id'],
-            'type':      m['payment_type'] == 'mobile_money' ? 'Mobile Money' : 'Card',
+            'type':      'Mobile Money',
             'provider':  m['provider'] ?? '',
             'number':    m['number'] ?? '',
             'isDefault': m['is_default'] ?? false,
@@ -832,10 +853,16 @@ class AppProvider with ChangeNotifier {
 
   Future<void> addPaymentMethod(Map<String, dynamic> method) async {
     try {
-      final data = await ApiService.post(ApiConstants.customerPaymentMethods, method);
+      final body = {
+        'payment_type': 'mobile_money',
+        'provider': method['provider'] ?? 'MTN',
+        'number': method['number'] ?? '',
+        'is_default': method['isDefault'] ?? false,
+      };
+      final data = await ApiService.post(ApiConstants.customerPaymentMethods, body);
       _paymentMethods.insert(0, {
         'id':        data['id'],
-        'type':      data['payment_type'] == 'mobile_money' ? 'Mobile Money' : 'Card',
+        'type':      'Mobile Money',
         'provider':  data['provider'] ?? '',
         'number':    data['number'] ?? '',
         'isDefault': data['is_default'] ?? false,
@@ -1028,6 +1055,40 @@ class AppProvider with ChangeNotifier {
   }
 
   // ── Collector — toggle online ──────────────────────────────────────────────
+  DateTime? _lastLocationPush;
+  LatLng? _lastPushedLocation;
+
+  Future<void> pushCollectorLocation(double lat, double lng) async {
+    if (!_collectorOnline) return;
+
+    final now = DateTime.now();
+    if (_lastLocationPush != null &&
+        _lastPushedLocation != null &&
+        now.difference(_lastLocationPush!) < const Duration(seconds: 12)) {
+      const earthRadius = 6371000.0;
+      final dLat = (lat - _lastPushedLocation!.latitude) * math.pi / 180;
+      final dLng = (lng - _lastPushedLocation!.longitude) * math.pi / 180;
+      final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+          math.cos(_lastPushedLocation!.latitude * math.pi / 180) *
+              math.cos(lat * math.pi / 180) *
+              math.sin(dLng / 2) *
+              math.sin(dLng / 2);
+      final distM = earthRadius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+      if (distM < 20) return;
+    }
+
+    try {
+      await ApiService.put(ApiConstants.collectorLocation, {
+        'lat': lat,
+        'lng': lng,
+      });
+      _collectorLocation = LatLng(lat, lng);
+      _lastLocationPush = now;
+      _lastPushedLocation = LatLng(lat, lng);
+      notifyListeners();
+    } catch (_) {}
+  }
+
   Future<void> toggleCollectorOnline({double? lat, double? lng}) async {
     try {
       final body = <String, dynamic>{};
@@ -1042,6 +1103,8 @@ class AppProvider with ChangeNotifier {
       } else {
         _stopIncomingPoll();
         _incomingRequest = null;
+        _lastLocationPush = null;
+        _lastPushedLocation = null;
       }
       notifyListeners();
     } on ApiException catch (e) {
@@ -1598,6 +1661,72 @@ class AppProvider with ChangeNotifier {
     } catch (_) {
       return iso;
     }
+  }
+
+  // ── Super-Admin: Branch Management ────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> fetchBranches() async {
+    final data = await ApiService.get(ApiConstants.superAdminBranches);
+    final list = data is List ? data as List : (data['results'] as List? ?? []);
+    return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<Map<String, dynamic>> createBranch({
+    required String name,
+    required String region,
+    String country = 'Ghana',
+    String address = '',
+    required double lat,
+    required double lng,
+    double serviceRadiusKm = 50.0,
+  }) async {
+    return await ApiService.post(ApiConstants.superAdminBranches, {
+      'name': name,
+      'region': region,
+      'country': country,
+      'address': address,
+      'lat': lat,
+      'lng': lng,
+      'service_radius_km': serviceRadiusKm,
+    });
+  }
+
+  Future<void> updateBranch(int id, Map<String, dynamic> fields) async {
+    await ApiService.put(ApiConstants.superAdminBranch(id), fields);
+  }
+
+  Future<void> deleteBranch(int id) async {
+    await ApiService.delete(ApiConstants.superAdminBranch(id));
+  }
+
+  Future<List<Map<String, dynamic>>> fetchAdminUsers() async {
+    final data = await ApiService.get(ApiConstants.superAdminAdmins);
+    final list = data is List ? data as List : (data['results'] as List? ?? []);
+    return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<Map<String, dynamic>> createAdminUser({
+    required String firstName,
+    required String lastName,
+    required String phone,
+    String email = '',
+    required String password,
+    int? branchId,
+  }) async {
+    return await ApiService.post(ApiConstants.superAdminAdmins, {
+      'first_name': firstName,
+      'last_name': lastName,
+      'phone': phone,
+      'email': email,
+      'password': password,
+      if (branchId != null) 'branch_id': branchId,
+    });
+  }
+
+  Future<void> assignAdminBranch(int adminId, int? branchId) async {
+    await ApiService.put(ApiConstants.superAdminAdmin(adminId), {
+      'branch_id': branchId,
+    });
   }
 
   @override

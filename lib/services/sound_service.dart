@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
@@ -14,6 +15,18 @@ class SoundService {
   static Future<void> initialize() async {
     if (_initialized) return;
     try {
+      // iOS: set audio session to playback so sounds are audible even when the
+      // device ringer is muted, and use mixWithOthers so we don't interrupt
+      // other apps (e.g. music). Without this, iOS defaults to soloAmbient
+      // which gets silenced by the ringer switch.
+      if (Platform.isIOS) {
+        await AudioPlayer.global.setAudioContext(AudioContext(
+          iOS: AudioContextIOS(
+            category: AVAudioSessionCategory.playback,
+            options: {AVAudioSessionOptions.mixWithOthers},
+          ),
+        ));
+      }
       await _player.setReleaseMode(ReleaseMode.stop);
       await _alarmPlayer.setReleaseMode(ReleaseMode.loop);
       await _alarmPlayer.setVolume(1.0);

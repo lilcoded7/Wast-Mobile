@@ -37,7 +37,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
   int _tab = 0;
   bool _redirecting = false;
 
-  static const _tabs = [
+  static const _baseTabs = [
     BottomNavigationBarItem(
         icon: Icon(Icons.dashboard_outlined),
         activeIcon: Icon(Icons.dashboard),
@@ -60,6 +60,12 @@ class _AdminHomePageState extends State<AdminHomePage> {
         label: 'More'),
   ];
 
+  static const _superAdminTab = BottomNavigationBarItem(
+    icon: Icon(Icons.location_city_outlined),
+    activeIcon: Icon(Icons.location_city),
+    label: 'Branches',
+  );
+
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<AppProvider>(context, listen: false);
@@ -75,17 +81,26 @@ class _AdminHomePageState extends State<AdminHomePage> {
         body: Center(child: CircularProgressIndicator(color: _kPrimary)),
       );
     }
+
+    final isSuperAdmin = provider.isSuperAdmin;
+    final tabs = isSuperAdmin ? [..._baseTabs, _superAdminTab] : _baseTabs;
+    final children = [
+      const _DashboardTab(),
+      const _CollectionsTab(),
+      const _CollectorsTab(),
+      const _FinanceTab(),
+      const _MoreTab(),
+      if (isSuperAdmin) const _BranchManagementTab(),
+    ];
+
+    // Clamp _tab index if switching between super/regular admin
+    final safeTab = _tab.clamp(0, tabs.length - 1);
+
     return Scaffold(
       backgroundColor: _kBg,
       body: IndexedStack(
-        index: _tab,
-        children: const [
-          _DashboardTab(),
-          _CollectionsTab(),
-          _CollectorsTab(),
-          _FinanceTab(),
-          _MoreTab(),
-        ],
+        index: safeTab,
+        children: children,
       ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
@@ -93,7 +108,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
           boxShadow: [BoxShadow(color: Color(0x12000000), blurRadius: 12)],
         ),
         child: BottomNavigationBar(
-          currentIndex: _tab,
+          currentIndex: safeTab,
           onTap: (i) => setState(() => _tab = i),
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
@@ -103,7 +118,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
               const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
           unselectedLabelStyle: const TextStyle(fontSize: 11),
           elevation: 0,
-          items: _tabs,
+          items: tabs,
         ),
       ),
     );
@@ -194,7 +209,14 @@ class _DashboardTabState extends State<_DashboardTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Admin Dashboard', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _kTextDark)),
-                Text('WastePick Control Panel', style: TextStyle(fontSize: 12, color: _kTextGray)),
+                Text(
+                  () {
+                    final branch = _data?['branch'] as Map<String, dynamic>?;
+                    if (branch == null) return 'All Branches';
+                    return branch['name'] as String? ?? 'WastePick Control Panel';
+                  }(),
+                  style: TextStyle(fontSize: 12, color: _kTextGray),
+                ),
               ],
             ),
           ),
@@ -785,7 +807,36 @@ class _CollectorsTabState extends State<_CollectorsTab> {
                           if (i == _items.length) {
                             return TextButton(onPressed: () { _page++; _load(); }, child: const Text('Load more'));
                           }
-                          return _CollectorCard(item: _items[i], onAction: () { _page = 1; _load(); });
+                          final collector = _items[i];
+                          final isSuperAdmin = Provider.of<AppProvider>(context, listen: false).isSuperAdmin;
+                          return _CollectorCard(
+                            item: collector,
+                            onAction: () { _page = 1; _load(); },
+                            isSuperAdmin: isSuperAdmin,
+                            onDelete: isSuperAdmin ? () async {
+                              final id = collector['id'] as int?;
+                              if (id == null) return;
+                              final messenger = ScaffoldMessenger.of(context);
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: const Text('Delete Collector?'),
+                                  content: Text('Delete "${collector['name']}"? This cannot be undone.'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                    TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: _kRed))),
+                                  ],
+                                ),
+                              );
+                              if (confirm != true) return;
+                              try {
+                                await ApiService.delete(ApiConstants.superAdminDeleteCollector(id));
+                                if (mounted) setState(() => _items.removeWhere((c) => c['id'] == id));
+                              } catch (_) {
+                                messenger.showSnackBar(const SnackBar(content: Text('Failed to delete collector'), backgroundColor: _kRed));
+                              }
+                            } : null,
+                          );
                         },
                       ),
                     ),
@@ -798,7 +849,9 @@ class _CollectorsTabState extends State<_CollectorsTab> {
 class _CollectorCard extends StatelessWidget {
   final Map<String, dynamic> item;
   final VoidCallback onAction;
-  const _CollectorCard({required this.item, required this.onAction});
+  final bool isSuperAdmin;
+  final VoidCallback? onDelete;
+  const _CollectorCard({required this.item, required this.onAction, this.isSuperAdmin = false, this.onDelete});
 
   Color _kycColor(String? s) {
     switch (s) {
@@ -877,10 +930,11 @@ class _CollectorCard extends StatelessWidget {
               ),
             ),
             Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if ((item['is_online'] as bool?) == true)
                   Container(
-                    margin: const EdgeInsets.only(bottom: 8),
+                    margin: const EdgeInsets.only(bottom: 4),
                     width: 8,
                     height: 8,
                     decoration: const BoxDecoration(color: _kAccent, shape: BoxShape.circle),
@@ -900,6 +954,14 @@ class _CollectorCard extends StatelessWidget {
                   ),
                   child: const Text('View', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                 ),
+                if (isSuperAdmin && onDelete != null)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, color: _kRed, size: 20),
+                    tooltip: 'Delete collector',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: onDelete,
+                  ),
               ],
             ),
           ],
@@ -1608,7 +1670,10 @@ class _MoreTab extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: [
         _MoreTile(Icons.people_outline, 'Customers', 'View all customers', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const _CustomersPage()))),
-        _MoreTile(Icons.person_add_outlined, 'Create User', 'Customer, collector, or investor', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const _AdminCreateUserPage()))),
+        _MoreTile(Icons.person_add_outlined, 'Create User', 'Customer, collector, or investor', () {
+          final isSA = Provider.of<AppProvider>(context, listen: false).isSuperAdmin;
+          Navigator.push(context, MaterialPageRoute(builder: (_) => _AdminCreateUserPage(isSuperAdmin: isSA)));
+        }),
         _MoreTile(Icons.calendar_today_outlined, 'Schedules', 'Recurring pickups', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const _SchedulesPage()))),
         _MoreTile(Icons.report_outlined, 'Dumping Reports', 'View filed reports', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const _ReportsPage()))),
         _MoreTile(Icons.settings_outlined, 'Admin Profile', 'Update your profile', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const _AdminProfilePage()))),
@@ -1724,6 +1789,7 @@ class _CustomersPageState extends State<_CustomersPage> {
                         itemBuilder: (_, i) {
                           if (i == _items.length) return TextButton(onPressed: () { _page++; _load(); }, child: const Text('Load more'));
                           final c = _items[i];
+                          final isSuperAdmin = Provider.of<AppProvider>(context, listen: false).isSuperAdmin;
                           return Container(
                             margin: const EdgeInsets.only(bottom: 8),
                             decoration: BoxDecoration(color: _kCard, borderRadius: BorderRadius.circular(12)),
@@ -1737,14 +1803,55 @@ class _CustomersPageState extends State<_CustomersPage> {
                               ),
                               title: Text(c['name'] as String? ?? '', style: const TextStyle(fontWeight: FontWeight.w700)),
                               subtitle: Text(c['phone'] as String? ?? '', style: const TextStyle(fontSize: 12)),
-                              trailing: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text('${c['completed_requests']} trips', style: const TextStyle(fontSize: 11, color: _kTextGray)),
-                                  Text('GH₵${c['total_spent']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _kPrimary)),
-                                ],
-                              ),
+                              trailing: isSuperAdmin
+                                  ? Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                          children: [
+                                            Text('${c['completed_requests']} trips', style: const TextStyle(fontSize: 11, color: _kTextGray)),
+                                            Text('GH₵${c['total_spent']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _kPrimary)),
+                                          ],
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete_outline, color: _kRed, size: 20),
+                                          tooltip: 'Delete customer',
+                                          onPressed: () async {
+                                            final id = c['id'] as int?;
+                                            if (id == null) return;
+                                            final messenger = ScaffoldMessenger.of(context);
+                                            final confirm = await showDialog<bool>(
+                                              context: context,
+                                              builder: (_) => AlertDialog(
+                                                title: const Text('Delete Customer?'),
+                                                content: Text('Delete "${c['name']}"? This cannot be undone.'),
+                                                actions: [
+                                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                                  TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: _kRed))),
+                                                ],
+                                              ),
+                                            );
+                                            if (confirm != true) return;
+                                            try {
+                                              await ApiService.delete(ApiConstants.superAdminDeleteCustomer(id));
+                                              if (mounted) setState(() => _items.removeWhere((x) => x['id'] == id));
+                                            } catch (_) {
+                                              messenger.showSnackBar(const SnackBar(content: Text('Failed to delete customer'), backgroundColor: _kRed));
+                                            }
+                                          },
+                                        ),
+                                      ],
+                                    )
+                                  : Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text('${c['completed_requests']} trips', style: const TextStyle(fontSize: 11, color: _kTextGray)),
+                                        Text('GH₵${c['total_spent']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _kPrimary)),
+                                      ],
+                                    ),
                             ),
                           );
                         },
@@ -1993,7 +2100,8 @@ class _ReportsPageState extends State<_ReportsPage> {
 // Admin Create User Page
 // ─────────────────────────────────────────────────────────────────────────────
 class _AdminCreateUserPage extends StatefulWidget {
-  const _AdminCreateUserPage();
+  final bool isSuperAdmin;
+  const _AdminCreateUserPage({this.isSuperAdmin = false});
   @override
   State<_AdminCreateUserPage> createState() => _AdminCreateUserPageState();
 }
@@ -2044,7 +2152,7 @@ class _AdminCreateUserPageState extends State<_AdminCreateUserPage> with SingleT
   @override
   void initState() {
     super.initState();
-    _tc = TabController(length: 3, vsync: this);
+    _tc = TabController(length: widget.isSuperAdmin ? 3 : 2, vsync: this);
   }
 
   @override
@@ -2229,21 +2337,14 @@ class _AdminCreateUserPageState extends State<_AdminCreateUserPage> with SingleT
       if (_invLat != null) payload['location_latitude'] = _invLat.toString();
       if (_invLng != null) payload['location_longitude'] = _invLng.toString();
 
-      final res = await ApiService.post(ApiConstants.adminInvestors, payload);
+      await ApiService.post(ApiConstants.adminInvestors, payload);
       if (!mounted) return;
-      final temp = res['investor']?['temporary_password'];
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(temp != null ? 'Investor created. Temp password: $temp' : 'Investor created'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Investor account created. They can set their password on first login.')),
+      );
+      Navigator.pop(context); // go back to investor list
     } catch (e) {
-      if (mounted) {
-        final msg = e.toString();
-        final friendly = msg.contains('password') && msg.contains('required')
-            ? 'Password is auto-generated for new investors. '
-              'Please deploy the latest backend to production, then try again.'
-            : msg;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendly)));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     } finally { if (mounted) setState(() => _loading = false); }
   }
 
@@ -2277,7 +2378,11 @@ class _AdminCreateUserPageState extends State<_AdminCreateUserPage> with SingleT
         controller: _tc,
         labelColor: _kPrimary,
         unselectedLabelColor: _kTextGray,
-        tabs: const [Tab(text: 'Customer'), Tab(text: 'Collector'), Tab(text: 'Investor')],
+        tabs: [
+          const Tab(text: 'Customer'),
+          const Tab(text: 'Collector'),
+          if (widget.isSuperAdmin) const Tab(text: 'Investor'),
+        ],
       ),
     ),
     body: TabBarView(
@@ -2361,25 +2466,26 @@ class _AdminCreateUserPageState extends State<_AdminCreateUserPage> with SingleT
               style: ElevatedButton.styleFrom(backgroundColor: _kPrimary, padding: const EdgeInsets.symmetric(vertical: 14)),
               child: _loading ? const CircularProgressIndicator(color: Colors.white) : const Text('Create Collector')),
         ]),
-        ListView(padding: const EdgeInsets.all(16), children: [
-          _field('First Name', _invFirst),
-          _field('Last Name', _invLast),
-          _field('Phone', _invPhone, type: TextInputType.phone),
-          _field(
-            'Location',
-            _invLocation,
-            suffixIcon: IconButton(
-              icon: const Icon(Icons.my_location, color: _kPrimary),
-              tooltip: 'Pick location with GPS',
-              onPressed: _pickInvestorLocation,
+        if (widget.isSuperAdmin)
+          ListView(padding: const EdgeInsets.all(16), children: [
+            _field('First Name', _invFirst),
+            _field('Last Name', _invLast),
+            _field('Phone', _invPhone, type: TextInputType.phone),
+            _field(
+              'Location',
+              _invLocation,
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.my_location, color: _kPrimary),
+                tooltip: 'Pick location with GPS',
+                onPressed: _pickInvestorLocation,
+              ),
             ),
-          ),
-          _field('Investment Amount (GHS)', _invAmount, type: TextInputType.number),
-          _field('ROI %', _invRoi, type: TextInputType.number),
-          ElevatedButton(onPressed: _loading ? null : _createInvestor,
-              style: ElevatedButton.styleFrom(backgroundColor: _kPrimary, padding: const EdgeInsets.symmetric(vertical: 14)),
-              child: _loading ? const CircularProgressIndicator(color: Colors.white) : const Text('Create Investor')),
-        ]),
+            _field('Investment Amount (GHS)', _invAmount, type: TextInputType.number),
+            _field('ROI %', _invRoi, type: TextInputType.number),
+            ElevatedButton(onPressed: _loading ? null : _createInvestor,
+                style: ElevatedButton.styleFrom(backgroundColor: _kPrimary, padding: const EdgeInsets.symmetric(vertical: 14)),
+                child: _loading ? const CircularProgressIndicator(color: Colors.white) : const Text('Create Investor')),
+          ]),
       ],
     ),
   );
@@ -2534,8 +2640,6 @@ class _AdminProfilePageState extends State<_AdminProfilePage> {
           _Field(_email, 'Email', Icons.email_outlined, type: TextInputType.emailAddress),
           const SizedBox(height: 12),
           _Field(_phone, 'Phone', Icons.phone_outlined, type: TextInputType.phone),
-          const SizedBox(height: 12),
-          _Field(_password, 'New Password (leave blank to keep)', Icons.lock_outline, obscure: true),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -2802,6 +2906,670 @@ class _Field extends StatelessWidget {
       filled: true, fillColor: Colors.white,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFEEEEEE))),
+    ),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Super-Admin: Branch Management Tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BranchManagementTab extends StatefulWidget {
+  const _BranchManagementTab();
+
+  @override
+  State<_BranchManagementTab> createState() => _BranchManagementTabState();
+}
+
+class _BranchManagementTabState extends State<_BranchManagementTab> {
+  bool _loading = true;
+  List<Map<String, dynamic>> _branches = [];
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final provider = Provider.of<AppProvider>(context, listen: false);
+      _branches = await provider.fetchBranches();
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _snack(String msg, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: error ? _kRed : _kPrimary,
+    ));
+  }
+
+  // ── Create Branch ───────────────────────────────────────────────────────────
+  Future<void> _showCreateBranchSheet() async {
+    final nameCtrl    = TextEditingController();
+    final regionCtrl  = TextEditingController();
+    final countryCtrl = TextEditingController(text: 'Ghana');
+    final addressCtrl = TextEditingController();
+    double? lat, lng;
+    String locationLabel = 'Tap to pick on map';
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Container(
+          padding: EdgeInsets.only(
+            left: 24, right: 24, top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('New Branch',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _kTextDark)),
+                const SizedBox(height: 20),
+                _SheetField(ctrl: nameCtrl,    label: 'Branch Name',  icon: Icons.business),
+                const SizedBox(height: 12),
+                _SheetField(ctrl: regionCtrl,  label: 'Region',       icon: Icons.map_outlined),
+                const SizedBox(height: 12),
+                _SheetField(ctrl: countryCtrl, label: 'Country',      icon: Icons.flag_outlined),
+                const SizedBox(height: 12),
+                _SheetField(ctrl: addressCtrl, label: 'Address (optional)', icon: Icons.location_on_outlined),
+                const SizedBox(height: 16),
+                // Map location picker — uses the tab's outer context so the
+                // picker sheet opens above the create-branch sheet.
+                GestureDetector(
+                  onTap: () async {
+                    final outerCtx = context; // capture before gap
+                    final result = await showLocationPicker(outerCtx);
+                    if (result != null) {
+                      setSheet(() {
+                        lat = (result['lat'] as num).toDouble();
+                        lng = (result['lng'] as num).toDouble();
+                        locationLabel = result['address'] as String? ??
+                            '${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}';
+                        if (addressCtrl.text.isEmpty && result['address'] != null) {
+                          addressCtrl.text = result['address'] as String;
+                        }
+                      });
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F5F5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: lat != null ? _kPrimary : const Color(0xFFE0E0E0)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.pin_drop_outlined,
+                            color: lat != null ? _kPrimary : _kTextGray, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            locationLabel,
+                            style: TextStyle(
+                              color: lat != null ? _kTextDark : _kTextGray,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        if (lat != null)
+                          const Icon(Icons.check_circle, color: _kPrimary, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _kPrimary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    onPressed: () async {
+                      if (nameCtrl.text.trim().isEmpty) {
+                        _snack('Branch name is required', error: true);
+                        return;
+                      }
+                      if (regionCtrl.text.trim().isEmpty) {
+                        _snack('Region is required', error: true);
+                        return;
+                      }
+                      if (lat == null) {
+                        _snack('Pick a location on the map', error: true);
+                        return;
+                      }
+                      Navigator.pop(ctx);
+                      try {
+                        final provider = Provider.of<AppProvider>(context, listen: false);
+                        await provider.createBranch(
+                          name: nameCtrl.text.trim(),
+                          region: regionCtrl.text.trim(),
+                          country: countryCtrl.text.trim().isEmpty ? 'Ghana' : countryCtrl.text.trim(),
+                          address: addressCtrl.text.trim(),
+                          lat: lat!,
+                          lng: lng!,
+                        );
+                        _snack('Branch created');
+                        _load();
+                      } on ApiException catch (e) {
+                        _snack(e.message, error: true);
+                      } catch (e) {
+                        _snack('Failed to create branch', error: true);
+                      }
+                    },
+                    child: const Text('Create Branch',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    nameCtrl.dispose();
+    regionCtrl.dispose();
+    countryCtrl.dispose();
+    addressCtrl.dispose();
+  }
+
+  // ── Create Admin ────────────────────────────────────────────────────────────
+  Future<void> _showCreateAdminSheet(int? preselectedBranchId) async {
+    final firstCtrl = TextEditingController();
+    final lastCtrl  = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final passCtrl  = TextEditingController();
+    int? selectedBranchId = preselectedBranchId;
+    bool obscure = true;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Container(
+          padding: EdgeInsets.only(
+            left: 24, right: 24, top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Create Admin',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _kTextDark)),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(child: _SheetField(ctrl: firstCtrl, label: 'First Name', icon: Icons.person_outline)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _SheetField(ctrl: lastCtrl,  label: 'Last Name',  icon: Icons.person_outline)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _SheetField(ctrl: phoneCtrl, label: 'Phone', icon: Icons.phone_outlined, type: TextInputType.phone),
+                const SizedBox(height: 12),
+                _SheetField(ctrl: emailCtrl, label: 'Email (optional)', icon: Icons.email_outlined, type: TextInputType.emailAddress),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: passCtrl,
+                  obscureText: obscure,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    prefixIcon: const Icon(Icons.lock_outline, size: 20, color: _kTextGray),
+                    suffixIcon: IconButton(
+                      icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, size: 20, color: _kTextGray),
+                      onPressed: () => setSheet(() => obscure = !obscure),
+                    ),
+                    filled: true, fillColor: const Color(0xFFF5F5F5),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE0E0E0))),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Branch assignment dropdown
+                const Text('Assign to Branch',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: _kTextDark)),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE0E0E0)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<int?>(
+                      isExpanded: true,
+                      value: selectedBranchId,
+                      hint: const Text('No branch (assign later)', style: TextStyle(color: _kTextGray)),
+                      items: [
+                        const DropdownMenuItem<int?>(
+                          value: null,
+                          child: Text('No branch (assign later)'),
+                        ),
+                        ..._branches.map((b) => DropdownMenuItem<int?>(
+                          value: b['id'] as int,
+                          child: Text('${b['name']} — ${b['region']}'),
+                        )),
+                      ],
+                      onChanged: (v) => setSheet(() => selectedBranchId = v),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _kPrimary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    onPressed: () async {
+                      if (firstCtrl.text.trim().isEmpty) { _snack('First name required', error: true); return; }
+                      if (phoneCtrl.text.trim().isEmpty) { _snack('Phone required', error: true); return; }
+                      if (passCtrl.text.length < 6) { _snack('Password must be 6+ characters', error: true); return; }
+                      Navigator.pop(ctx);
+                      try {
+                        final provider = Provider.of<AppProvider>(context, listen: false);
+                        await provider.createAdminUser(
+                          firstName: firstCtrl.text.trim(),
+                          lastName:  lastCtrl.text.trim(),
+                          phone:     phoneCtrl.text.trim(),
+                          email:     emailCtrl.text.trim(),
+                          password:  passCtrl.text,
+                          branchId:  selectedBranchId,
+                        );
+                        _snack('Admin created');
+                        _load();
+                      } on ApiException catch (e) {
+                        _snack(e.message, error: true);
+                      } catch (e) {
+                        _snack('Failed to create admin', error: true);
+                      }
+                    },
+                    child: const Text('Create Admin',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    firstCtrl.dispose(); lastCtrl.dispose(); phoneCtrl.dispose();
+    emailCtrl.dispose(); passCtrl.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _kBg,
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'add_admin',
+            onPressed: () => _showCreateAdminSheet(null),
+            backgroundColor: _kBlue,
+            icon: const Icon(Icons.person_add, color: Colors.white),
+            label: const Text('Admin', style: TextStyle(color: Colors.white)),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: 'add_branch',
+            onPressed: _showCreateBranchSheet,
+            backgroundColor: _kPrimary,
+            icon: const Icon(Icons.add_location_alt, color: Colors.white),
+            label: const Text('Branch', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        color: _kPrimary,
+        child: CustomScrollView(
+          slivers: [
+            SliverAppBar(
+              pinned: true,
+              backgroundColor: _kPrimary,
+              title: const Text('Branch Management',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.person_add_outlined, color: Colors.white),
+                  tooltip: 'Create Admin',
+                  onPressed: () => _showCreateAdminSheet(null),
+                ),
+              ],
+            ),
+            if (_loading)
+              const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator(color: _kPrimary)))
+            else if (_error != null)
+              SliverFillRemaining(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error_outline, color: _kRed, size: 40),
+                      const SizedBox(height: 8),
+                      Text(_error!, style: const TextStyle(color: _kRed)),
+                      TextButton(onPressed: _load, child: const Text('Retry')),
+                    ],
+                  ),
+                ),
+              )
+            else if (_branches.isEmpty)
+              const SliverFillRemaining(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.location_city_outlined, size: 56, color: _kTextGray),
+                      SizedBox(height: 12),
+                      Text('No branches yet', style: TextStyle(color: _kTextGray, fontSize: 16)),
+                      SizedBox(height: 6),
+                      Text('Tap "Branch" below to create the first one',
+                          style: TextStyle(color: _kTextGray, fontSize: 13)),
+                    ],
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (_, i) => _BranchCard(
+                      branch: _branches[i],
+                      onCreateAdmin: () => _showCreateAdminSheet(_branches[i]['id'] as int),
+                      onDeleteAdmin: () async {
+                        final branch = _branches[i];
+                        final admin = branch['assigned_admin'] as Map<String, dynamic>?;
+                        if (admin == null) return;
+                        final adminId = admin['id'] as int?;
+                        if (adminId == null) return;
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (_) => AlertDialog(
+                            title: const Text('Delete Admin?'),
+                            content: Text('Delete "${admin['name']}"? This cannot be undone.'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                              TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: _kRed))),
+                            ],
+                          ),
+                        );
+                        if (confirm != true) return;
+                        try {
+                          await ApiService.delete(ApiConstants.superAdminDeleteAdmin(adminId));
+                          _snack('Admin deleted');
+                          _load();
+                        } catch (_) {
+                          _snack('Failed to delete admin', error: true);
+                        }
+                      },
+                      onDelete: () async {
+                        final id = _branches[i]['id'] as int;
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (_) => AlertDialog(
+                            title: const Text('Delete Branch?'),
+                            content: Text(
+                                'Delete "${_branches[i]['name']}"? Admins assigned to it will be unassigned.'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                              TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Delete', style: TextStyle(color: _kRed))),
+                            ],
+                          ),
+                        );
+                        if (confirm != true) return;
+                        try {
+                          // ignore: use_build_context_synchronously
+                          final provider = Provider.of<AppProvider>(context, listen: false);
+                          await provider.deleteBranch(id);
+                          _snack('Branch deleted');
+                          _load();
+                        } catch (_) {
+                          _snack('Failed to delete branch', error: true);
+                        }
+                      },
+                    ),
+                    childCount: _branches.length,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BranchCard extends StatelessWidget {
+  const _BranchCard({
+    required this.branch,
+    required this.onCreateAdmin,
+    required this.onDelete,
+    this.onDeleteAdmin,
+  });
+  final Map<String, dynamic> branch;
+  final VoidCallback onCreateAdmin;
+  final VoidCallback onDelete;
+  final VoidCallback? onDeleteAdmin;
+
+  @override
+  Widget build(BuildContext context) {
+    final assignedAdmin = branch['assigned_admin'] as Map<String, dynamic>?;
+    final adminCount    = branch['admin_count'] as int? ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 3))],
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _kPrimary.withValues(alpha: 0.07),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: _kPrimary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.location_city, color: _kPrimary, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(branch['name'] as String? ?? '',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _kTextDark)),
+                      const SizedBox(height: 2),
+                      Text('${branch['region']}, ${branch['country']}',
+                          style: const TextStyle(color: _kTextGray, fontSize: 13)),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: _kRed, size: 20),
+                  onPressed: onDelete,
+                ),
+              ],
+            ),
+          ),
+          // Details
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.pin_drop_outlined, size: 16, color: _kTextGray),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        branch['address'] != null && (branch['address'] as String).isNotEmpty
+                            ? branch['address'] as String
+                            : 'Lat ${(branch['lat'] as num?)?.toStringAsFixed(4)}, '
+                              'Lng ${(branch['lng'] as num?)?.toStringAsFixed(4)}',
+                        style: const TextStyle(color: _kTextGray, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(Icons.radio_button_checked, size: 16, color: _kTextGray),
+                    const SizedBox(width: 6),
+                    Text('Service radius: ${branch['service_radius_km']} km',
+                        style: const TextStyle(color: _kTextGray, fontSize: 13)),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: (branch['is_active'] as bool? ?? true)
+                            ? _kAccent.withValues(alpha: 0.15)
+                            : _kRed.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        (branch['is_active'] as bool? ?? true) ? 'Active' : 'Inactive',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: (branch['is_active'] as bool? ?? true) ? _kAccent : _kRed,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
+                // Admin section
+                Row(
+                  children: [
+                    const Icon(Icons.admin_panel_settings_outlined, size: 16, color: _kTextGray),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: assignedAdmin != null
+                          ? Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(assignedAdmin['name'] as String? ?? '',
+                                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: _kTextDark)),
+                                      Text(assignedAdmin['phone'] as String? ?? '',
+                                          style: const TextStyle(color: _kTextGray, fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                if (onDeleteAdmin != null)
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: _kRed, size: 18),
+                                    tooltip: 'Delete admin',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: onDeleteAdmin,
+                                  ),
+                              ],
+                            )
+                          : const Text('No admin assigned',
+                              style: TextStyle(color: _kTextGray, fontSize: 13)),
+                    ),
+                    TextButton.icon(
+                      onPressed: onCreateAdmin,
+                      icon: Icon(
+                        adminCount > 0 ? Icons.person_add_outlined : Icons.person_add,
+                        size: 16,
+                        color: _kPrimary,
+                      ),
+                      label: Text(
+                        adminCount > 0 ? 'Add Admin' : 'Assign Admin',
+                        style: const TextStyle(color: _kPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SheetField extends StatelessWidget {
+  const _SheetField({
+    required this.ctrl,
+    required this.label,
+    required this.icon,
+    this.type = TextInputType.text,
+  });
+  final TextEditingController ctrl;
+  final String label;
+  final IconData icon;
+  final TextInputType type;
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: ctrl,
+    keyboardType: type,
+    decoration: InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, size: 20, color: _kTextGray),
+      filled: true, fillColor: const Color(0xFFF5F5F5),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE0E0E0))),
     ),
   );
 }

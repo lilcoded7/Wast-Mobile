@@ -9,6 +9,13 @@ import '../services/api_service.dart';
 import '../constants/api_constants.dart';
 import 'investor_fleet_tab.dart';
 
+String _fmt(dynamic value) {
+  final n = double.tryParse(value?.toString() ?? '') ?? 0.0;
+  final parts = n.toStringAsFixed(2).split('.');
+  final intPart = parts[0].replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+  return 'GHS $intPart.${parts[1]}';
+}
+
 const Color _kBg = Color(0xFFF0F7F0);
 const Color _kPrimary = Color(0xFF2E7D32);
 const Color _kCard = Colors.white;
@@ -182,7 +189,12 @@ class _DashboardTab extends StatelessWidget {
     final roiActual = summary['roi_actual'] as String? ?? '0';
     final yearShare = summary['estimated_year_share'] as String? ?? '0';
     final companyRev = companyStats['year_revenue'] as String? ?? '0';
-    final profitMargin = investor['yearly_profit_margin'] as String? ?? '0';
+    final profitMarginPct = companyStats['profit_margin_pct'] as String? ?? investor['yearly_profit_margin'] as String? ?? '0';
+    final netProfit = companyStats['net_profit'] as String? ?? '0';
+    final yearNetProfit = companyStats['year_net_profit'] as String? ?? '0';
+    final operatingCostRate = companyStats['operating_cost_rate'] as String? ?? '40%';
+    final totalCompanyRev = companyStats['total_company_revenue'] as String? ?? '0';
+    final branchBreakdown = companyStats['branch_breakdown'] as List<dynamic>? ?? [];
     final company = investor['company_name'] as String? ?? '';
     final memberSince = investor['member_since'] as String? ?? '';
 
@@ -227,7 +239,7 @@ class _DashboardTab extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Text('GHS $investAmt',
+              Text(_fmt(investAmt),
                   style: const TextStyle(
                       color: Colors.white,
                       fontSize: 30,
@@ -257,17 +269,30 @@ class _DashboardTab extends StatelessWidget {
         const SizedBox(height: 20),
         Row(
           children: [
-            Expanded(child: _StatCard(label: 'Company YTD', value: 'GHS $companyRev', icon: Icons.business)),
+            Expanded(child: _StatCard(label: 'Company YTD', value: _fmt(companyRev), icon: Icons.business)),
             const SizedBox(width: 12),
-            Expanded(child: _StatCard(label: 'Your Est. Share', value: 'GHS $yearShare', icon: Icons.savings)),
+            Expanded(child: _StatCard(label: 'Your Est. Share', value: _fmt(yearShare), icon: Icons.savings)),
           ],
         ),
         const SizedBox(height: 12),
-        _StatCard(label: 'Est. Profit Margin', value: '$profitMargin%', icon: Icons.percent),
+        Row(
+          children: [
+            Expanded(child: _StatCard(label: 'Net Profit (YTD)', value: _fmt(yearNetProfit), icon: Icons.trending_up)),
+            const SizedBox(width: 12),
+            Expanded(child: _StatCard(label: 'Profit Margin', value: '$profitMarginPct%', icon: Icons.percent)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _StatCard(label: 'Total Revenue (All)', value: _fmt(totalCompanyRev), icon: Icons.account_balance)),
+            const SizedBox(width: 12),
+            Expanded(child: _StatCard(label: 'Operating Costs', value: operatingCostRate, icon: Icons.receipt_long)),
+          ],
+        ),
         const SizedBox(height: 20),
-        const Text('Earnings Overview',
-            style: TextStyle(
-                fontWeight: FontWeight.bold, fontSize: 16, color: _kTextDark)),
+        const Text('Your Earnings',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _kTextDark)),
         const SizedBox(height: 12),
 
         // Earnings grid
@@ -298,7 +323,7 @@ class _DashboardTab extends StatelessWidget {
               color: const Color(0xFF7B1FA2),
             ),
             _EarningCard(
-              label: 'Total',
+              label: 'Total Earned',
               amount: summary['total'] as String? ?? '0',
               icon: Icons.account_balance_wallet,
               color: _kGold,
@@ -306,15 +331,96 @@ class _DashboardTab extends StatelessWidget {
           ],
         ),
 
+        // Net profit highlight
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1B5E20),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.insights, color: Colors.white, size: 28),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Company Net Profit (All Time)',
+                        style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text(_fmt(netProfit),
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                    Text('After $operatingCostRate operating costs — $profitMarginPct% margin',
+                        style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Regional breakdown
+        if (branchBreakdown.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          const Text('Regional Performance',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _kTextDark)),
+          const SizedBox(height: 12),
+          ...branchBreakdown.map((b) {
+            final br = b as Map<String, dynamic>;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _kCard,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE8E8E8)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: _kPrimary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.location_city, color: _kPrimary, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(br['branch_name'] as String? ?? '',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        Text(br['region'] as String? ?? '',
+                            style: const TextStyle(color: _kTextGray, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(_fmt(br['total_revenue'] ?? '0'),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _kPrimary)),
+                      Text('${br['collections'] ?? 0} collections',
+                          style: const TextStyle(color: _kTextGray, fontSize: 12)),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+
         const SizedBox(height: 20),
 
         // Earnings chart (last 8 entries)
         if (earnings.isNotEmpty) ...[
           const Text('Earnings Trend',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: _kTextDark)),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _kTextDark)),
           const SizedBox(height: 12),
           _EarningsChart(earnings: earnings),
           const SizedBox(height: 20),
@@ -402,7 +508,7 @@ class _EarningCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('GHS $amount',
+              Text(_fmt(amount),
                   style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
@@ -641,7 +747,7 @@ class _EarningsTab extends StatelessWidget {
                   ],
                 ),
               ),
-              Text('GHS ${e['amount']}',
+              Text(_fmt(e['amount']),
                   style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,

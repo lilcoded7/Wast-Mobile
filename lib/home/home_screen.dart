@@ -72,6 +72,14 @@ const _kServiceRadiusKm = 25.0;
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) NotificationService.promptIfNeeded(context);
+    });
+  }
+
   String _timeGreeting() {
     final h = DateTime.now().hour;
     if (h < 12) return 'Good morning, 👋';
@@ -939,6 +947,7 @@ class _ActiveRequestMapViewState extends State<_ActiveRequestMapView>
   // ── Payment flow (shown when status == 'assigned') ────────────────────────
   void _onAcceptAndPay() {
     final price = _provider.proposedPrice;
+    final defaultPhone = (_provider.currentUser?['phone'] as String?) ?? '';
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -946,14 +955,14 @@ class _ActiveRequestMapViewState extends State<_ActiveRequestMapView>
       builder:
           (_) => _PaymentSheet(
             price: price,
-            onPay: (method) async {
+            defaultPhone: defaultPhone,
+            onPay: (phone) async {
               Navigator.pop(context);
               setState(() => _paying = true);
               try {
-                await _provider.payAndAccept(method);
-                // Mark paid so we switch to the tracking sheet
+                await _provider.payAndAccept(phone);
                 if (mounted) setState(() => _paidAndConfirmed = true);
-                await _showPaymentSuccess(method);
+                await _showPaymentSuccess();
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -974,20 +983,8 @@ class _ActiveRequestMapViewState extends State<_ActiveRequestMapView>
     );
   }
 
-  Future<void> _showPaymentSuccess(String method) async {
+  Future<void> _showPaymentSuccess() async {
     if (!mounted) return;
-    final icon = switch (method) {
-      'mobile_money' => Icons.phone_android,
-      'card' => Icons.credit_card,
-      _ => Icons.payments_outlined,
-    };
-    final label = switch (method) {
-      'mobile_money' => 'Mobile Money',
-      'card' => 'Credit Card',
-      _ => 'Cash on Pickup',
-    };
-    // Do NOT await — we control dismissal via a timer so the dialog
-    // never blocks when there is no dismiss button.
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1023,11 +1020,11 @@ class _ActiveRequestMapViewState extends State<_ActiveRequestMapView>
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 16, color: kTextGray),
+                const Icon(Icons.phone_android, size: 16, color: kTextGray),
                 const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: const TextStyle(fontSize: 14, color: kTextGray),
+                const Text(
+                  'Mobile Money',
+                  style: TextStyle(fontSize: 14, color: kTextGray),
                 ),
               ],
             ),
@@ -2068,129 +2065,114 @@ class _TrackingSheet extends StatelessWidget {
   }
 }
 
-// ── Payment method bottom sheet ────────────────────────────────────────────────
+// ── Mobile Money payment bottom sheet ──────────────────────────────────────────
 class _PaymentSheet extends StatefulWidget {
   final int price;
-  final void Function(String method) onPay;
-  const _PaymentSheet({required this.price, required this.onPay});
+  final String defaultPhone;
+  final void Function(String phone) onPay;
+  const _PaymentSheet({
+    required this.price,
+    required this.defaultPhone,
+    required this.onPay,
+  });
 
   @override
   State<_PaymentSheet> createState() => _PaymentSheetState();
 }
 
 class _PaymentSheetState extends State<_PaymentSheet> {
-  String _selected = 'mobile_money';
+  late final TextEditingController _phoneCtrl;
 
-  static const _methods = [
-    {
-      'key': 'mobile_money',
-      'label': 'Mobile Money (MoMo)',
-      'icon': Icons.phone_android,
-    },
-    {'key': 'cash', 'label': 'Cash on Pickup', 'icon': Icons.payments_outlined},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _phoneCtrl = TextEditingController(text: widget.defaultPhone);
+  }
+
+  @override
+  void dispose() {
+    _phoneCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        decoration: const BoxDecoration(
-          color: kCard,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _Handle(),
-            const SizedBox(height: 16),
-            const Text(
-              'Choose Payment Method',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: kTextDark,
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            color: kCard,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _Handle(),
+              const SizedBox(height: 16),
+              const Text(
+                'Pay with Mobile Money',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: kTextDark,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Total: $kCurrency ${widget.price}',
-              style: const TextStyle(fontSize: 14, color: kTextGray),
-            ),
-            const SizedBox(height: 20),
-            for (final m in _methods)
-              GestureDetector(
-                onTap: () => setState(() => _selected = m['key'] as String),
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color:
-                        _selected == m['key']
-                            ? kLightGreen
-                            : const Color(0xFFF5F5F5),
+              const SizedBox(height: 6),
+              Text(
+                'Total: $kCurrency ${widget.price}',
+                style: const TextStyle(fontSize: 14, color: kTextGray),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'You will receive a USSD prompt on your phone. Approve it to complete payment.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: kTextGray, height: 1.4),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: 'MoMo Number',
+                  hintText: '0552779311',
+                  prefixIcon: const Icon(Icons.phone_android, color: kPrimary),
+                  filled: true,
+                  fillColor: const Color(0xFFF5F5F5),
+                  border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color:
-                          _selected == m['key'] ? kPrimary : Colors.transparent,
-                      width: 1.5,
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: () => widget.onPay(_phoneCtrl.text.trim()),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Pay  $kCurrency ${widget.price}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        m['icon'] as IconData,
-                        color: _selected == m['key'] ? kPrimary : kTextGray,
-                        size: 22,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Text(
-                          m['label'] as String,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: _selected == m['key'] ? kPrimary : kTextDark,
-                          ),
-                        ),
-                      ),
-                      if (_selected == m['key'])
-                        const Icon(
-                          Icons.check_circle,
-                          color: kPrimary,
-                          size: 20,
-                        ),
-                    ],
-                  ),
                 ),
               ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: () => widget.onPay(_selected),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kPrimary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  elevation: 0,
-                ),
-                child: Text(
-                  'Pay  $kCurrency ${widget.price}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

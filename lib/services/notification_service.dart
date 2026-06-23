@@ -2,7 +2,10 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:wastmobile/services/sound_service.dart';
 
 /// Handles local (on-device) push notifications with normal and loud alarm channels.
@@ -34,6 +37,12 @@ class NotificationService {
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
+      // Allow notifications to appear (banner + sound) while app is in the foreground.
+      // Without these three flags, iOS silently drops every local notification the
+      // moment the app is active — which is exactly when our polling fires them.
+      defaultPresentAlert: true,
+      defaultPresentBadge: true,
+      defaultPresentSound: true,
     );
 
     try {
@@ -215,5 +224,121 @@ class NotificationService {
   static void reset() {
     _lastRequestStatus = null;
     SoundService.stopAlarm();
+  }
+
+  // ── Permission helpers ──────────────────────────────────────────────────────
+
+  static Future<bool> _checkPermissions() async {
+    try {
+      if (Platform.isIOS) {
+        final ios = _plugin.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>();
+        final status = await ios?.checkPermissions();
+        return status?.isEnabled == true;
+      } else if (Platform.isAndroid) {
+        final android = _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        return await android?.areNotificationsEnabled() ?? true;
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  static Future<void> _requestSystemPermissions() async {
+    try {
+      if (Platform.isIOS) {
+        final ios = _plugin.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>();
+        await ios?.requestPermissions(alert: true, badge: true, sound: true);
+      } else if (Platform.isAndroid) {
+        final android = _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        await android?.requestNotificationsPermission();
+      }
+    } catch (_) {}
+  }
+
+  /// Show a one-time notification permission prompt after login.
+  /// On first call: explains the benefit then triggers the system dialog.
+  /// If the user previously denied: offers a "Open Settings" shortcut.
+  static Future<void> promptIfNeeded(BuildContext context) async {
+    if (!_initialized) await initialize();
+
+    final hasPermission = await _checkPermissions();
+    if (hasPermission) return;
+
+    if (!context.mounted) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final alreadyAsked = prefs.getBool('_notif_permission_prompted') ?? false;
+
+    if (!context.mounted) return;
+
+    if (alreadyAsked) {
+      final goToSettings = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(children: [
+            Icon(Icons.notifications_off_outlined, color: Colors.orange[700]),
+            const SizedBox(width: 10),
+            const Text('Notifications Off'),
+          ]),
+          content: const Text(
+            'Enable notifications in Settings so you never miss a pickup alert or status update.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Later'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E7D32)),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Open Settings', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      if (goToSettings == true) {
+        final uri = Uri.parse(Platform.isIOS ? 'app-settings:' : 'package:com.wastepick.app');
+        if (await canLaunchUrl(uri)) await launchUrl(uri);
+      }
+      return;
+    }
+
+    final allow = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(children: [
+          Icon(Icons.notifications_active_outlined, color: Color(0xFF2E7D32)),
+          SizedBox(width: 10),
+          Text('Stay Updated'),
+        ]),
+        content: const Text(
+          'Allow notifications so we can alert you when your waste is being collected, '
+          'track your collector in real-time, and send pickup status updates.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E7D32)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Allow', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    await prefs.setBool('_notif_permission_prompted', true);
+
+    if (allow == true) {
+      await _requestSystemPermissions();
+    }
   }
 }

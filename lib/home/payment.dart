@@ -122,7 +122,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
                               TextStyle(color: _kTextGray, fontSize: 16)),
                       const SizedBox(height: 6),
                       const Text(
-                          'Add MoMo, card, or cash for faster checkout',
+                          'Add your MoMo number for faster checkout',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: _kTextGray, fontSize: 13)),
                       const SizedBox(height: 20),
@@ -258,32 +258,16 @@ class _AddPaymentSheet extends StatefulWidget {
 }
 
 class _AddPaymentSheetState extends State<_AddPaymentSheet> {
-  String _type = 'Mobile Money (MoMo)';
+  String _provider = 'MTN';
   final _numCtrl = TextEditingController();
-  final _nameCtrl = TextEditingController();
 
-  static const _types = [
-    'Mobile Money (MoMo)',
-    'Credit Card',
-    'Debit Card',
-    'Cash on Pickup',
-  ];
+  static const _providers = ['MTN', 'Vodafone', 'AirtelTigo'];
 
   @override
   void dispose() {
     _numCtrl.dispose();
-    _nameCtrl.dispose();
     super.dispose();
   }
-
-  bool get _isCash => _type == 'Cash on Pickup';
-  bool get _isCard =>
-      _type == 'Credit Card' || _type == 'Debit Card';
-
-  String get _numHint =>
-      _type == 'Mobile Money (MoMo)' ? '+233 24 000 0000' : '•••• •••• •••• 1234';
-  String get _numLabel =>
-      _type == 'Mobile Money (MoMo)' ? 'MoMo Number' : 'Card Number';
 
   @override
   Widget build(BuildContext context) {
@@ -310,13 +294,13 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text('Add Payment Method',
+            const Text('Add Mobile Money',
                 style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: _kTextDark)),
             const SizedBox(height: 20),
-            const Text('Type',
+            const Text('Network',
                 style: TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
@@ -330,86 +314,55 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
-                  value: _type,
+                  value: _provider,
                   isExpanded: true,
                   style: const TextStyle(color: _kTextDark, fontSize: 15),
                   dropdownColor: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  onChanged: (v) => setState(() => _type = v!),
-                  items: _types
+                  onChanged: (v) => setState(() => _provider = v!),
+                  items: _providers
                       .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                       .toList(),
                 ),
               ),
             ),
-            if (!_isCash) ...[
-              const SizedBox(height: 16),
-              Text(_numLabel,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: _kTextDark)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _numCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  hintText: _numHint,
-                  hintStyle: const TextStyle(color: _kTextGray),
-                  filled: true,
-                  fillColor: const Color(0xFFF5F5F5),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: _kPrimary, width: 1.5),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 14),
+            const SizedBox(height: 16),
+            const Text('MoMo Number',
+                style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: _kTextDark)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _numCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                hintText: '0552779311',
+                hintStyle: const TextStyle(color: _kTextGray),
+                filled: true,
+                fillColor: const Color(0xFFF5F5F5),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
                 ),
-              ),
-            ],
-            if (_isCard) ...[
-              const SizedBox(height: 16),
-              const Text('Cardholder Name',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: _kTextDark)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _nameCtrl,
-                decoration: InputDecoration(
-                  hintText: 'John Mensah',
-                  hintStyle: const TextStyle(color: _kTextGray),
-                  filled: true,
-                  fillColor: const Color(0xFFF5F5F5),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: _kPrimary, width: 1.5),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 14),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      const BorderSide(color: _kPrimary, width: 1.5),
                 ),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 14),
               ),
-            ],
+            ),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
                 onPressed: () {
-                  widget.onSave(_type, {
+                  widget.onSave('Mobile Money (MoMo)', {
+                    'provider': _provider,
                     'number': _numCtrl.text.trim(),
-                    'name': _nameCtrl.text.trim(),
                     'isDefault': false,
                   });
                 },
@@ -419,7 +372,7 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
                       borderRadius: BorderRadius.circular(14)),
                   elevation: 0,
                 ),
-                child: const Text('Save Payment Method',
+                child: const Text('Save MoMo Number',
                     style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,

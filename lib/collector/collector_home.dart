@@ -42,6 +42,14 @@ class _CollectorHomePageState extends State<CollectorHomePage> {
   int _tab = 0;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) NotificationService.promptIfNeeded(context);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
@@ -235,6 +243,9 @@ class _HomeTabState extends State<_HomeTab> with WidgetsBindingObserver {
         if (!mounted) return;
         final newLoc = LatLng(p.latitude, p.longitude);
         setState(() => _collectorGps = newLoc);
+        if (provider.collectorOnline) {
+          provider.pushCollectorLocation(p.latitude, p.longitude);
+        }
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => _mapController?.animateCamera(gm.CameraUpdate.newCameraPosition(gm.CameraPosition(target: gm.LatLng(newLoc.latitude, newLoc.longitude), zoom: 16))),
         );
