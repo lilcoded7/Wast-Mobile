@@ -32,7 +32,7 @@ class AppProvider with ChangeNotifier {
     final role = user['role'] as String? ?? 'customer';
     _isLoggedIn = true;
     _isCollector = role == 'collector';
-    _isAdmin = role == 'admin' || role == 'super_admin';
+    _isAdmin = role == 'staff' || role == 'admin' || role == 'super_admin';
     _isInvestor = role == 'investor';
     notifyListeners();
     // Load active request immediately on every customer authentication (login or restart)
@@ -84,6 +84,9 @@ class AppProvider with ChangeNotifier {
     } catch (_) {}
     _activeRequestLoading = false;
   }
+
+  /// Reload the customer's in-flight pickup request (e.g. after schedule trigger).
+  Future<void> loadActiveRequest() => _loadActiveRequest();
 
   void login() { _isLoggedIn = true; _isCollector = false; _isAdmin = false; _isInvestor = false; notifyListeners(); }
   void loginAsCollector() { _isLoggedIn = true; _isCollector = true; _isAdmin = false; _isInvestor = false; notifyListeners(); }
@@ -208,6 +211,40 @@ class AppProvider with ChangeNotifier {
   static const LatLng _kServiceCenter = LatLng(4.9016, -1.7574);
   static const LatLng _defaultCustomerLocation = _kServiceCenter;
   static const LatLng _defaultCollectorStart = LatLng(4.9120, -1.7600);
+
+  List<Map<String, dynamic>> _publicBranches = [];
+  bool _branchesLoaded = false;
+
+  Future<void> loadPublicBranches({bool forceReload = false}) async {
+    if (_branchesLoaded && !forceReload) return;
+    try {
+      final raw = await ApiService.getList(ApiConstants.publicBranches);
+      _publicBranches = raw.cast<Map<String, dynamic>>();
+      _branchesLoaded = true;
+    } catch (_) {}
+  }
+
+  bool isInServiceArea(double lat, double lng) {
+    if (_publicBranches.isEmpty) return true; // fallback: allow if no data yet
+    for (final b in _publicBranches) {
+      final bLat = (b['lat'] as num).toDouble();
+      final bLng = (b['lng'] as num).toDouble();
+      final radius = (b['service_radius_km'] as num).toDouble();
+      final dist = _haversineKm(lat, lng, bLat, bLng);
+      if (dist <= radius) return true;
+    }
+    return false;
+  }
+
+  static double _haversineKm(double lat1, double lng1, double lat2, double lng2) {
+    const r = 6371.0;
+    final dLat = (lat2 - lat1) * math.pi / 180;
+    final dLng = (lng2 - lng1) * math.pi / 180;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180) * math.cos(lat2 * math.pi / 180) *
+        math.sin(dLng / 2) * math.sin(dLng / 2);
+    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  }
 
   LatLng _customerLocation = _defaultCustomerLocation;
   LatLng _collectorLocation = _defaultCollectorStart;
@@ -364,6 +401,12 @@ class AppProvider with ChangeNotifier {
 
   Map<String, dynamic>? get activeRequest => _activeRequest;
   String? get requestStatus => _activeRequest?['status'] as String?;
+  /// Snapshotted per-request — set by the admin's Payment Mode toggle at the
+  /// moment this request was created. 'pay_on_dispatch' (default) charges
+  /// before the collector heads out; 'pay_on_completion' charges after.
+  String get paymentMode =>
+      (_activeRequest?['payment_mode'] as String?) ?? 'pay_on_dispatch';
+  bool get isPayOnCompletion => paymentMode == 'pay_on_completion';
   bool get hasActiveRequest =>
       _activeRequest != null &&
       requestStatus != 'completed' &&
@@ -474,13 +517,27 @@ class AppProvider with ChangeNotifier {
   String? get pendingPaymentType => _pendingPaymentType;
   bool get paymentConfirmed =>
       (_activeRequest?['payment_status'] as String?) == 'confirmed';
+  bool _paymentCancelRequested = false;
 
   Future<void> recordPayment(String paymentType, {int? paymentMethodId}) async {
     throw Exception('Use payWithMoMo() for Mobile Money payments.');
   }
 
+  /// Called when the customer cancels while a MoMo payment is awaiting
+  /// authorization — stops verification polling and cancels the request,
+  /// which notifies the waiting collector and frees them up.
+  Future<void> cancelPendingPayment() async {
+    _paymentCancelRequested = true;
+    await cancelRequest();
+  }
+
   /// Initiate Coded Pay MoMo and poll until confirmed or timeout (~2 min).
-  Future<void> payWithMoMo(String phoneNumber) async {
+  /// [onAwaitingAuthorization] fires once the USSD prompt has been sent, so
+  /// the UI can switch from "initiating" to "check your phone" messaging.
+  Future<void> payWithMoMo(
+    String phoneNumber, {
+    void Function()? onAwaitingAuthorization,
+  }) async {
     final id = _activeRequest?['id'] as int?;
     if (id == null) return;
     final phone = phoneNumber.trim();
@@ -488,6 +545,7 @@ class AppProvider with ChangeNotifier {
       throw Exception('Enter your Mobile Money number.');
     }
 
+    _paymentCancelRequested = false;
     try {
       final init = await ApiService.post(ApiConstants.recordPayment(id), {
         'phone_number': phone,
@@ -497,9 +555,14 @@ class AppProvider with ChangeNotifier {
         _activeRequest = pickup;
         notifyListeners();
       }
+      onAwaitingAuthorization?.call();
 
       for (var attempt = 0; attempt < 24; attempt++) {
         await Future.delayed(const Duration(seconds: 5));
+        if (_paymentCancelRequested) {
+          _paymentCancelRequested = false;
+          throw Exception('Payment cancelled.');
+        }
         final result = await ApiService.get(ApiConstants.verifyMoMoPayment(id));
         final codedStatus = (result['coded_pay_status'] as String?)?.toLowerCase();
         final payStatus = (result['payment_status'] as String?)?.toLowerCase();
@@ -525,6 +588,32 @@ class AppProvider with ChangeNotifier {
     } on ApiException catch (e) {
       throw Exception(e.message);
     }
+  }
+
+  /// Poll for Mobile Money confirmation on a request that's already
+  /// `completed` — used in Pay on Completion mode, where the backend
+  /// auto-sends the USSD charge the moment the collector marks the job done.
+  /// Unlike [payWithMoMo], nothing needs to be initiated here — just wait
+  /// for the customer to approve the prompt already on their phone.
+  Future<bool> pollPostCompletionPayment() async {
+    final id = _activeRequest?['id'] as int?;
+    if (id == null) return false;
+    for (var attempt = 0; attempt < 24; attempt++) {
+      try {
+        final result = await ApiService.get(ApiConstants.verifyMoMoPayment(id));
+        final payStatus = (result['payment_status'] as String?)?.toLowerCase();
+        final updated = result['pickup'];
+        if (updated is Map<String, dynamic>) {
+          _activeRequest = updated;
+          notifyListeners();
+        }
+        if (payStatus == 'confirmed') return true;
+      } catch (_) {
+        // transient network/verify error — keep polling until timeout
+      }
+      await Future.delayed(const Duration(seconds: 5));
+    }
+    return paymentConfirmed;
   }
 
   // ── Customer request flow ──────────────────────────────────────────────────
@@ -572,6 +661,8 @@ class AppProvider with ChangeNotifier {
       'waste_type': _selectedWasteType,
       'pickup_address': _pickupAddress,
       'price': _selectedWastePrice,
+      'pickup_lat': _customerLocation.latitude,
+      'pickup_lng': _customerLocation.longitude,
     };
     _lastPolledStatus = 'finding';
     _pollTimer?.cancel();
@@ -615,8 +706,11 @@ class AppProvider with ChangeNotifier {
   }
 
   // Called from the customer "Confirm & Pay" button — MoMo only via Coded Pay.
-  Future<void> payAndAccept(String phoneNumber) async {
-    await payWithMoMo(phoneNumber);
+  Future<void> payAndAccept(
+    String phoneNumber, {
+    void Function()? onAwaitingAuthorization,
+  }) async {
+    await payWithMoMo(phoneNumber, onAwaitingAuthorization: onAwaitingAuthorization);
   }
 
   Future<void> skipProposedCollector() async {
@@ -708,23 +802,45 @@ class AppProvider with ChangeNotifier {
   Future<void> fetchHistory({bool force = false}) async {
     if (_historyLoaded && !force) return;
     try {
-      final data = await ApiService.get(ApiConstants.customerRequests);
-      final raw = data['data'] ?? data['results'] ?? data;
-      if (raw is List) {
-        _history = raw.map((r) {
+      final results = await Future.wait([
+        ApiService.get(ApiConstants.customerRequests),
+        ApiService.get(ApiConstants.customerSchedules),
+      ]);
+      final reqRaw = results[0]['data'] ?? results[0]['results'] ?? results[0];
+      final schRaw = results[1]['data'] ?? results[1]['results'] ?? results[1];
+      final List<Map<String, dynamic>> items = [];
+      if (reqRaw is List) {
+        for (final r in reqRaw) {
           final m = r as Map<String, dynamic>;
-          return {
+          items.add({
             'id':        m['id'],
             'wasteType': m['waste_type'] ?? '',
             'address':   m['pickup_address'] ?? '',
             'date':      _formatApiDate(m['completed_at'] as String? ?? m['created_at'] as String? ?? ''),
             'amount':    parseInt(m['price']),
             'status':    _localizeStatus((m['status'] as String?) ?? ''),
-          };
-        }).toList();
-        _historyLoaded = true;
-        notifyListeners();
+            'type':      'request',
+          });
+        }
       }
+      if (schRaw is List) {
+        for (final s in schRaw) {
+          final m = s as Map<String, dynamic>;
+          final rawStatus = (m['status'] as String?) ?? 'pending';
+          items.add({
+            'id':        m['id'],
+            'wasteType': m['waste_type_label'] ?? m['waste_type'] ?? '',
+            'address':   m['pickup_address'] ?? m['address'] ?? '',
+            'date':      _formatApiDate(m['pickup_datetime'] as String? ?? m['created_at'] as String? ?? ''),
+            'amount':    parseInt(m['price']),
+            'status':    rawStatus == 'pending' ? 'Scheduled' : _localizeStatus(rawStatus),
+            'type':      'schedule',
+          });
+        }
+      }
+      _history = items;
+      _historyLoaded = true;
+      notifyListeners();
     } catch (_) {}
   }
 
@@ -890,16 +1006,20 @@ class AppProvider with ChangeNotifier {
       final data = await ApiService.get(ApiConstants.customerSchedules);
       final raw = data['data'] ?? data['results'] ?? data;
       if (raw is List) {
-        _scheduledPickups = raw.map((s) => s as Map<String, dynamic>).toList();
+        _scheduledPickups = raw
+            .map((s) => _mapSchedule(s as Map<String, dynamic>))
+            .toList();
         notifyListeners();
       }
-    } catch (_) {}
+    } on ApiException catch (e) {
+      throw Exception(e.message);
+    }
   }
 
   Future<void> addSchedule(Map<String, dynamic> schedule) async {
     try {
       final data = await ApiService.post(ApiConstants.customerSchedules, schedule);
-      _scheduledPickups.insert(0, data);
+      _scheduledPickups.insert(0, _mapSchedule(data));
       notifyListeners();
     } on ApiException catch (e) {
       throw Exception(e.message);
@@ -911,7 +1031,98 @@ class AppProvider with ChangeNotifier {
       await ApiService.delete(ApiConstants.cancelSchedule(id));
       _scheduledPickups.removeWhere((s) => s['id'] == id);
       notifyListeners();
-    } catch (_) {}
+    } on ApiException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
+  /// POST to activate a scheduled pickup and start finding a collector.
+  /// Returns the created PickupRequest and sets it as the active request.
+  Future<Map<String, dynamic>> triggerSchedule(int id) async {
+    try {
+      final data = await ApiService.post(ApiConstants.triggerSchedule(id), {});
+      _activeRequest = data;
+      _lastPolledStatus = data['status'] as String? ?? 'finding';
+      _syncLocationsFromActiveRequest();
+      _startPolling();
+      final idx = _scheduledPickups.indexWhere((s) => s['id'] == id);
+      if (idx >= 0) {
+        _scheduledPickups[idx] = {
+          ..._scheduledPickups[idx],
+          'status': data['status'] ?? 'finding',
+          'active_request_id': data['id'],
+        };
+      }
+      notifyListeners();
+      return data;
+    } on ApiException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
+  Map<String, dynamic> _mapSchedule(Map<String, dynamic> m) {
+    final wasteKey =
+        (m['wasteType'] as String?) ?? (m['waste_type'] as String?) ?? 'general';
+    final wasteLabel = (m['waste_type_label'] as String?) ?? wasteKey;
+    final time =
+        (m['time'] as String?) ?? (m['pickup_time'] as String?) ?? '';
+    final freq = (m['frequency'] as String?) ?? 'once';
+    final isOneTime = (m['is_one_time'] as bool?) ?? false;
+    final isRecurring =
+        (m['isRecurring'] as bool?) ?? (m['is_recurring'] as bool?) ?? !isOneTime;
+
+    // `next_pickup_datetime` is the authoritative field the backend computes
+    // from day_of_week + pickup_time — there is no separate calendar-date field.
+    String pickupDatetime = (m['next_pickup_datetime'] as String?) ??
+        (m['pickup_datetime'] as String?) ??
+        '';
+    var date = (m['date'] as String?) ?? (m['pickup_date'] as String?) ?? '';
+    final startDate = m['start_date'] as String?;
+    if (startDate != null && startDate.isNotEmpty) {
+      date = startDate;
+    }
+    if (date.isEmpty && pickupDatetime.isNotEmpty) {
+      date = pickupDatetime.split('T').first;
+    }
+    if (pickupDatetime.isEmpty && date.isNotEmpty && time.isNotEmpty) {
+      final t = time.length <= 5 ? '$time:00' : time;
+      pickupDatetime = '${date}T$t';
+    }
+
+    String binTypeName = '';
+    final binTypeRaw = m['bin_type'];
+    if (binTypeRaw is Map) {
+      binTypeName = (binTypeRaw['display_name'] as String?) ??
+          (binTypeRaw['name'] as String?) ??
+          '';
+    }
+
+    final priceRaw = m['estimated_price'] ?? m['price'];
+    var priceInt = 0;
+    if (priceRaw != null) {
+      priceInt = parseInt(priceRaw, 0);
+    } else if (m['bin_type_price'] != null) {
+      final bins = (m['num_bins'] as num?)?.toInt() ?? 1;
+      priceInt = parseInt(m['bin_type_price'], 0) * bins;
+    }
+
+    return {
+      'id': m['id'],
+      'wasteType': wasteLabel,
+      'waste_type': wasteKey,
+      'date': date,
+      'time': time,
+      'frequency': isOneTime ? 'once' : freq,
+      'isRecurring': isRecurring && !isOneTime,
+      'is_one_time': isOneTime,
+      'status': (m['status'] as String?) ?? 'pending',
+      'price': priceInt,
+      'pickup_datetime': pickupDatetime,
+      'active_request_id': m['active_request_id'],
+      'binTypeName': binTypeName.isNotEmpty
+          ? binTypeName
+          : (m['bin_type_name'] as String?) ?? '',
+    };
   }
 
   // ── Dumping reports (from API) ─────────────────────────────────────────────
@@ -1283,6 +1494,29 @@ class AppProvider with ChangeNotifier {
     }
   }
 
+  /// Called when the collector accepted from the route-preview page (API already called).
+  void onRequestAcceptedFromPreview(Map<String, dynamic> data) {
+    _activeCollectorRequest = data;
+    _incomingRequest = null;
+    _lastIncoming = null;
+    notifyListeners();
+    fetchCollectorEarnings();
+  }
+
+  bool get collectorPaymentConfirmed =>
+      (_activeCollectorRequest?['payment_status'] as String?) == 'confirmed';
+
+  /// Refresh the active collector request from the server to detect payment confirmation.
+  Future<void> refreshActiveCollectorRequest() async {
+    final id = _activeCollectorRequest?['id'] as int?;
+    if (id == null) return;
+    try {
+      final data = await ApiService.get(ApiConstants.collectorRequest(id));
+      _activeCollectorRequest = data;
+      notifyListeners();
+    } catch (_) {}
+  }
+
   Future<void> declineRequest() async {
     if (_incomingRequest == null) return;
     final id = _incomingRequest!['id'] as int?;
@@ -1324,9 +1558,10 @@ class AppProvider with ChangeNotifier {
     final id = _activeCollectorRequest?['id'] as int?;
     if (id == null) return;
     try {
-      final data = await ApiService.post(ApiConstants.completePickup(id), {});
-      _activeCollectorRequest = data;
+      await ApiService.post(ApiConstants.completePickup(id), {});
+      _activeCollectorRequest = null;
       await fetchCollectorEarnings();
+      await fetchCollectorCollections();
       notifyListeners();
     } on ApiException catch (e) {
       throw Exception(e.message);
@@ -1349,6 +1584,8 @@ class AppProvider with ChangeNotifier {
       'location': m['pickup_address'] ?? '',
       'pickupLat': parseDoubleOrNull(m['pickup_lat']),
       'pickupLng': parseDoubleOrNull(m['pickup_lng']),
+      'collectorStartLat': parseDoubleOrNull(m['collector_start_lat']),
+      'collectorStartLng': parseDoubleOrNull(m['collector_start_lng']),
       'wasteType': m['waste_type'] ?? '',
       'price': parseInt(m['price']),
       'basePrice': parseInt(m['base_price']),
@@ -1667,7 +1904,7 @@ class AppProvider with ChangeNotifier {
 
   Future<List<Map<String, dynamic>>> fetchBranches() async {
     final data = await ApiService.get(ApiConstants.superAdminBranches);
-    final list = data is List ? data as List : (data['results'] as List? ?? []);
+    final list = (data['data'] as List?) ?? (data['results'] as List?) ?? [];
     return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
@@ -1710,15 +1947,15 @@ class AppProvider with ChangeNotifier {
     required String lastName,
     required String phone,
     String email = '',
-    required String password,
     int? branchId,
+    String role = 'admin',
   }) async {
     return await ApiService.post(ApiConstants.superAdminAdmins, {
       'first_name': firstName,
       'last_name': lastName,
       'phone': phone,
       'email': email,
-      'password': password,
+      'role': role,
       if (branchId != null) 'branch_id': branchId,
     });
   }

@@ -9,6 +9,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 import 'package:provider/provider.dart';
 
 import '../providers/user_provider.dart';
+import '../widgets/profile_avatar.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../services/tracking_service.dart';
@@ -65,18 +66,30 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-// Sekondi-Takoradi service area: city centre + 25 km radius
-const _kServiceCenter = LatLng(4.9016, -1.7574);
-const _kServiceRadiusKm = 25.0;
-
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+
+  Widget _headerAvatarFallback(String name) => Container(
+        color: kPrimary,
+        child: Center(
+          child: Text(
+            name.isNotEmpty ? name[0].toUpperCase() : 'U',
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+        ),
+      );
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) NotificationService.promptIfNeeded(context);
+      if (mounted) {
+        NotificationService.promptIfNeeded(context);
+        final p = context.read<AppProvider>();
+        p.loadPublicBranches(forceReload: true);
+        p.fetchSchedules().catchError((_) {});
+      }
     });
   }
 
@@ -87,17 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return 'Good evening, 👋';
   }
 
-  // Returns true if [pos] is within the Sekondi-Takoradi service area.
-  bool _inServiceArea(geo.Position pos) {
-    final dist = const Distance().as(
-      LengthUnit.Kilometer,
-      LatLng(pos.latitude, pos.longitude),
-      _kServiceCenter,
-    );
-    return dist <= _kServiceRadiusKm;
-  }
-
-  // Checks location, then navigates to [page] — or shows "not available" dialog.
+  // Checks location against active branches, then navigates or shows "not available".
   Future<void> _goToPickup(Widget page) async {
     geo.Position? pos;
     try {
@@ -112,38 +115,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted) return;
 
-    if (pos != null && !_inServiceArea(pos)) {
-      showDialog(
-        context: context,
-        builder:
-            (_) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              title: const Row(
-                children: [
-                  Icon(Icons.location_off, color: Color(0xFFD32F2F)),
-                  SizedBox(width: 10),
-                  Text('Not Available'),
-                ],
-              ),
-              content: const Text(
-                'WastePick currently serves Sekondi-Takoradi, Ghana only.\n\n'
-                'Service is not available in your current location.',
-                style: TextStyle(height: 1.5),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text(
-                    'OK',
-                    style: TextStyle(color: Color(0xFF2E7D32)),
-                  ),
-                ),
+    if (pos != null) {
+      final provider = context.read<AppProvider>();
+      if (!provider.isInServiceArea(pos.latitude, pos.longitude)) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            title: const Row(
+              children: [
+                Icon(Icons.location_off, color: Color(0xFFD32F2F)),
+                SizedBox(width: 10),
+                Text('Not Available'),
               ],
             ),
-      );
-      return;
+            content: const Text(
+              'Trash IT is not currently available in your location.',
+              style: TextStyle(height: 1.5),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK', style: TextStyle(color: Color(0xFF2E7D32))),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
     }
 
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));
@@ -218,39 +217,49 @@ class _HomeScreenState extends State<HomeScreen> {
                     vertical: 16,
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _timeGreeting(),
-                            style: const TextStyle(fontSize: 13, color: kTextGray),
-                          ),
-                          Text(
-                            provider.displayName,
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: kTextDark,
-                            ),
-                          ),
-                        ],
+                      // Logo – far left
+                      Image.asset(
+                        'assets/bolaaba_logo.png',
+                        height: 28,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                       ),
-                      GestureDetector(
-                        onTap:
-                            () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const NotificationPage(),
-                              ),
+                      const SizedBox(width: 12),
+                      // Greeting + name – expanded middle
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _timeGreeting(),
+                              style: const TextStyle(fontSize: 13, color: kTextGray),
                             ),
+                            Text(
+                              provider.displayName,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: kTextDark,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Bell notification
+                      GestureDetector(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const NotificationPage()),
+                        ),
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
                             Container(
-                              width: 44,
-                              height: 44,
+                              width: 40,
+                              height: 40,
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 shape: BoxShape.circle,
@@ -265,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: const Icon(
                                 Icons.notifications_outlined,
                                 color: kTextDark,
-                                size: 22,
+                                size: 20,
                               ),
                             ),
                             if (provider.unreadNotifications > 0)
@@ -294,6 +303,35 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                           ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Profile avatar – far right
+                      GestureDetector(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ProfilePage()),
+                        ),
+                        child: ClipOval(
+                          child: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: provider.profileImageUrl != null
+                                ? Image(
+                                    image: SslNetworkImageProvider(
+                                        provider.profileImageUrl!),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        _headerAvatarFallback(
+                                            provider.displayName),
+                                    frameBuilder: (_, child, frame, __) =>
+                                        frame == null
+                                            ? _headerAvatarFallback(
+                                                provider.displayName)
+                                            : child,
+                                  )
+                                : _headerAvatarFallback(provider.displayName),
+                          ),
                         ),
                       ),
                     ],
@@ -367,7 +405,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 24),
                         const Text(
-                          'Waste Types',
+                          'Waste Bins',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -375,22 +413,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        SizedBox(
-                          height: 140,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: provider.wasteTypes.length,
-                            separatorBuilder:
-                                (_, __) => const SizedBox(width: 12),
-                            itemBuilder:
-                                (_, i) => _WasteTypeCard(
-                                  wasteType: provider.wasteTypes[i],
-                                  onTap:
-                                      () => _goToPickup(
-                                        const RequestPickupPage(),
-                                      ),
-                                ),
-                          ),
+                        _BinTypesRow(
+                          wasteTypes: provider.wasteTypes,
+                          onTap: () => _goToPickup(const RequestPickupPage()),
                         ),
                         const SizedBox(height: 32),
                       ],
@@ -945,7 +970,9 @@ class _ActiveRequestMapViewState extends State<_ActiveRequestMapView>
           : '--';
 
   // ── Payment flow (shown when status == 'assigned') ────────────────────────
-  void _onAcceptAndPay() {
+  Future<void> _onAcceptAndPay() async {
+    await _provider.fetchPaymentMethods();
+    if (!mounted) return;
     final price = _provider.proposedPrice;
     final defaultPhone = (_provider.currentUser?['phone'] as String?) ?? '';
     showModalBottomSheet(
@@ -959,11 +986,37 @@ class _ActiveRequestMapViewState extends State<_ActiveRequestMapView>
             onPay: (phone) async {
               Navigator.pop(context);
               setState(() => _paying = true);
+              var authDialogOpen = false;
+              void closeAuthDialog() {
+                if (authDialogOpen && mounted) {
+                  authDialogOpen = false;
+                  Navigator.pop(context);
+                }
+              }
               try {
-                await _provider.payAndAccept(phone);
+                await _provider.payAndAccept(
+                  phone,
+                  onAwaitingAuthorization: () {
+                    if (!mounted) return;
+                    authDialogOpen = true;
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => _AwaitingAuthorizationDialog(
+                        onCancel: () {
+                          authDialogOpen = false;
+                          Navigator.pop(context);
+                          _provider.cancelPendingPayment();
+                        },
+                      ),
+                    );
+                  },
+                );
+                closeAuthDialog();
                 if (mounted) setState(() => _paidAndConfirmed = true);
                 await _showPaymentSuccess();
               } catch (e) {
+                closeAuthDialog();
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -1030,7 +1083,7 @@ class _ActiveRequestMapViewState extends State<_ActiveRequestMapView>
             ),
             const SizedBox(height: 6),
             Text(
-              '$kCurrency ${_provider.proposedPrice}',
+              money(_provider.proposedPrice, prefix: kCurrency),
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -1078,8 +1131,11 @@ class _ActiveRequestMapViewState extends State<_ActiveRequestMapView>
     final isFinding = status == 'finding';
     // 'proposed' = system matched a collector but collector hasn't accepted yet
     final isProposed = status == 'proposed';
-    // 'assigned' = collector accepted; customer should confirm + pay
-    final isAssigned = status == 'assigned' && !_paidAndConfirmed;
+    // 'assigned' = collector accepted; customer should confirm + pay —
+    // except in Pay on Completion mode, where no payment is due until the
+    // pickup is actually done, so we skip straight to the tracking view.
+    final isAssigned =
+        status == 'assigned' && !_paidAndConfirmed && !_provider.isPayOnCompletion;
     final isArrived = status == 'arrived';
 
     // Bottom sheet sizing
@@ -1698,7 +1754,7 @@ class _ProposedSheet extends StatelessWidget {
               ),
               _InfoPill(
                 icon: Icons.payments_outlined,
-                value: '$kCurrency $price',
+                value: money(price, prefix: kCurrency),
                 label: 'Total',
               ),
             ],
@@ -1822,7 +1878,7 @@ class _ProposedSheet extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Confirm & Pay  ·  $kCurrency $price',
+                        'Confirm & Pay  ·  ${money(price, prefix: kCurrency)}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -2065,6 +2121,47 @@ class _TrackingSheet extends StatelessWidget {
   }
 }
 
+// ── Waiting-for-MoMo-authorization dialog ──────────────────────────────────────
+class _AwaitingAuthorizationDialog extends StatelessWidget {
+  final VoidCallback onCancel;
+  const _AwaitingAuthorizationDialog({required this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 36,
+            height: 36,
+            child: CircularProgressIndicator(strokeWidth: 3),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Waiting for payment authorization...',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Please check your phone and authorize the Mobile Money '
+            'payment by entering your PIN.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: onCancel,
+            child: const Text('Cancel Payment'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Mobile Money payment bottom sheet ──────────────────────────────────────────
 class _PaymentSheet extends StatefulWidget {
   final int price;
@@ -2083,10 +2180,25 @@ class _PaymentSheet extends StatefulWidget {
 class _PaymentSheetState extends State<_PaymentSheet> {
   late final TextEditingController _phoneCtrl;
 
+  String _resolveDefaultPhone(AppProvider provider) {
+    for (final m in provider.paymentMethods) {
+      if (m['isDefault'] == true) {
+        final n = m['number'] as String? ?? '';
+        if (n.isNotEmpty) return n;
+      }
+    }
+    for (final m in provider.paymentMethods) {
+      final n = m['number'] as String? ?? '';
+      if (n.isNotEmpty) return n;
+    }
+    return widget.defaultPhone;
+  }
+
   @override
   void initState() {
     super.initState();
-    _phoneCtrl = TextEditingController(text: widget.defaultPhone);
+    final provider = context.read<AppProvider>();
+    _phoneCtrl = TextEditingController(text: _resolveDefaultPhone(provider));
   }
 
   @override
@@ -2097,6 +2209,7 @@ class _PaymentSheetState extends State<_PaymentSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final savedMethods = context.watch<AppProvider>().paymentMethods;
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -2123,7 +2236,7 @@ class _PaymentSheetState extends State<_PaymentSheet> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Total: $kCurrency ${widget.price}',
+                'Total: ${money(widget.price, prefix: kCurrency)}',
                 style: const TextStyle(fontSize: 14, color: kTextGray),
               ),
               const SizedBox(height: 8),
@@ -2133,6 +2246,70 @@ class _PaymentSheetState extends State<_PaymentSheet> {
                 style: TextStyle(fontSize: 13, color: kTextGray, height: 1.4),
               ),
               const SizedBox(height: 20),
+              if (savedMethods.isNotEmpty) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Saved numbers',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: kTextDark.withValues(alpha: 0.85),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...savedMethods.map((m) {
+                  final number = m['number'] as String? ?? '';
+                  final provider = m['provider'] as String? ?? 'MoMo';
+                  final selected = _phoneCtrl.text.trim() == number;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: selected
+                          ? kPrimary.withValues(alpha: 0.08)
+                          : const Color(0xFFF5F5F5),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: number.isEmpty
+                            ? null
+                            : () => setState(() => _phoneCtrl.text = number),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.account_balance_wallet_outlined,
+                                size: 18,
+                                color: selected ? kPrimary : kTextGray,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  '$provider · $number',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: selected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    color: selected ? kPrimary : kTextDark,
+                                  ),
+                                ),
+                              ),
+                              if (selected)
+                                const Icon(Icons.check_circle,
+                                    color: kPrimary, size: 18),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 12),
+              ],
               TextField(
                 controller: _phoneCtrl,
                 keyboardType: TextInputType.phone,
@@ -2162,7 +2339,7 @@ class _PaymentSheetState extends State<_PaymentSheet> {
                     elevation: 0,
                   ),
                   child: Text(
-                    'Pay  $kCurrency ${widget.price}',
+                    'Pay  ${money(widget.price, prefix: kCurrency)}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -2576,7 +2753,7 @@ class _NoRequestCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Text(
-                          '🌿 Eco Pickup',
+                          '🌿 Trash IT',
                           style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                         ),
                       ),
@@ -2702,7 +2879,116 @@ class _QuickActionCard extends StatelessWidget {
   );
 }
 
-// ── Waste Type card ────────────────────────────────────────────────────────────
+// ── Bin Types horizontal row ───────────────────────────────────────────────────
+// Flattens all bin_types across waste types and shows them as scrollable cards.
+class _BinTypesRow extends StatelessWidget {
+  final List<Map<String, dynamic>> wasteTypes;
+  final VoidCallback onTap;
+  const _BinTypesRow({required this.wasteTypes, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    // Build flat list of bins, each carrying its parent waste type color+icon
+    final bins = <Map<String, dynamic>>[];
+    for (final wt in wasteTypes) {
+      final color = wt['color'] as Color? ?? const Color(0xFF757575);
+      final icon = wt['icon'] as IconData? ?? Icons.delete_outline;
+      final rawBins = wt['bin_types'];
+      if (rawBins is List) {
+        for (final b in rawBins) {
+          final bm = b as Map<String, dynamic>;
+          bins.add({...bm, '_color': color, '_icon': icon});
+        }
+      }
+    }
+
+    if (bins.isEmpty) {
+      return SizedBox(
+        height: 130,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: wasteTypes.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (_, i) => _WasteTypeCard(wasteType: wasteTypes[i], onTap: onTap),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 130,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: bins.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, i) {
+          final b = bins[i];
+          final color = b['_color'] as Color;
+          final price = b['price'] ?? b['base_price'];
+          final name = (b['display_name'] as String?)
+              ?? (b['name'] as String?) ?? '';
+          return GestureDetector(
+            onTap: onTap,
+            child: Container(
+              width: 120,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: kCard,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.delete_outline, color: color, size: 18),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: kTextDark,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        money(price, prefix: kCurrency),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ── Waste Type card (kept for fallback) ────────────────────────────────────────
 class _WasteTypeCard extends StatelessWidget {
   final Map<String, dynamic> wasteType;
   final VoidCallback onTap;
@@ -2712,7 +2998,7 @@ class _WasteTypeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = wasteType['color'] as Color;
     final icon = wasteType['icon'] as IconData;
-    final price = parseInt(wasteType['price']);
+    final price = wasteType['price'];
     final name = wasteType['name'] as String;
 
     return GestureDetector(
@@ -2762,7 +3048,7 @@ class _WasteTypeCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '$kCurrency $price',
+              money(price, prefix: kCurrency),
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
